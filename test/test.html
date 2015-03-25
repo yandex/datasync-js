@@ -1,0 +1,33 @@
+<!doctype html>
+<html><head>
+    <meta charset="utf-8"/>
+    <title>Yandex Cloud Data JS API Test Runner</title>
+    <link rel="stylesheet" href="../node_modules/mocha/mocha.css" />
+</head><body>
+    <div id="mocha"></div>
+    <script src="../node_modules/mocha/mocha.js"></script>
+    <script src="../node_modules/expect.js/index.js"></script>
+    <script>mocha.setup('bdd')</script>
+    <script src="../build/cloud-data-sync-api.js"></script>
+    <!-- Tests -->
+    <script src="test.cloud.dataSyncApi.Value.js"></script>
+    <script src="test.cloud.dataSyncApi.Record.js"></script>
+    <script src="test.cloud.dataSyncApi.http.js"></script>
+    <script src="test.cloud.dataSyncApi.Transaction.js"></script>
+    <script src="test.cloud.dataSyncApi.Dataset.js"></script>
+    <script src="test.cloud.dataSyncApi.Database.js"></script>
+    <script src="test.cloud.dataSyncApi.js"></script>
+    <script>
+        ya.modules.require([
+            'test.cloud.dataSyncApi.Value',
+            'test.cloud.dataSyncApi.Record',
+            'test.cloud.dataSyncApi.http',
+            'test.cloud.dataSyncApi.Transaction',
+            'test.cloud.dataSyncApi.Dataset',
+            'test.cloud.dataSyncApi.Database',
+            'test.cloud.dataSyncApi'
+        ], function () {
+            mocha.run();
+        });
+    </script>
+</body></html>

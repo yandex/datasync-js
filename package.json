@@ -1,0 +1,31 @@
+{
+    "name": "yandex-data-sync-js-api",
+    "version": "1.0.0",
+    "description": "Yandex DataSync JS API",
+    "author": "Sergey Konstantinov <twirl@yandex-team.ru>",
+    "dependencies": {
+    },
+    "devDependencies": {
+        "vow": "0.4.x",
+        "ym": "0.1.x",
+        "expect.js": "0.3.x",
+        "gulp": "3.x.x",
+        "gulp-uglify": "1.x.x",
+        "gulp-wrapper": "0.1.x",
+        "gulp-concat": "2.x.x",
+        "gulp-rename": "1.x.x",
+        "del": "0.1.x",
+        "streamqueue": "0.1.x",
+        "xmlhttprequest": "1.x.x",
+        "mocha": "2.x.x"
+    },
+    "engine": "node >= 0.10.28",
+    "scripts": {
+        "debug": "gulp debug",
+        "release": "gulp release",
+        "all": "gulp",
+        "clean": "gulp clean",
+        "watch": "gulp watch",
+        "test": "mocha"
+    }
+}
