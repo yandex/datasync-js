@@ -19,7 +19,7 @@
             });
             $login.find('#enter').on('click', function () {
                 ya.cloud.client.initialize({
-                    key: document.location.href.split('?')[1]
+                    key: '249666f289704886855a0f99e546e69c'
                 }).done(function () {
                     ContactListModel.create().done(function (model) {
                         var view = new ContactListView(model);
