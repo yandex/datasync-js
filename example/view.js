@@ -115,7 +115,7 @@ $.extend(ContactListView.prototype, {
             .on('click', '.edit-contact', this._editContact.bind(this))
             .on('click', '.delete-contact', this._deleteContact.bind(this));
 
-        setInterval(this._update.bind(this), 10 * 1000);
+        setInterval(this._update.bind(this), 20 * 1000);
     },
 
     _buildHtml: function () {
