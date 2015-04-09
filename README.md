@@ -1,4 +1,3 @@
-# datasync-js
 Yandex DataSync JS API 
 ===================================
 
