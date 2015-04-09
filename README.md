@@ -2,7 +2,7 @@ Yandex DataSync JS API
 ===================================
 
 
-Ynadex DataSync API allows for structured data storage and synchronization in Web services and mobile applications.
+Yandex DataSync API allows for structured data storage and synchronization in Web services and mobile applications.
 Please follow the rules and recommendations in the API Terms of Use and brand guide.
 
 
