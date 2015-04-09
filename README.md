@@ -9,7 +9,7 @@ Please follow the rules and recommendations in the API Terms of Use and brand gu
 Links
 
     http://legal.yandex.ru/sync_api/
-    https://preview.tech-admin-ru.yandex-team.ru/datasync/jsapi/doc/overview/concepts/about-docpage/
+    https://tech.yandex.ru/datasync/jsapi/doc/overview/concepts/about-docpage/
 
 
 License
