@@ -1,10 +1,19 @@
 (function (global) {/**
- * Yandex Cloud Data JS API
+ * Yandex DataSync JS API
  *
- * Copyright (c) 2014 Yandex
- * Dual licensed under the MIT and GPL licenses:
- * http://www.opensource.org/licenses/mit-license.php
- * http://www.gnu.org/licenses/gpl.html
+ * Copyright 2014-2015 Yandex LLC and contributors https://yandex.com/
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied. See the License for the specific
+ * language governing permissions and limitations under the License.
  */
 var ns = {
         cloud: {}
@@ -430,7 +439,7 @@ var module = { exports: {} }, exports = {};
 /**
  * @module vow
  * @author Filatov Dmitry <dfilatov@yandex-team.ru>
- * @version 0.4.7
+ * @version 0.4.9
  * @license
  * Dual licensed under the MIT and GPL licenses:
  *   * http://www.opensource.org/licenses/mit-license.php
@@ -816,7 +825,7 @@ Promise.prototype = /** @lends Promise.prototype */ {
     /**
      * Adds resolving reaction (to fulfillment and rejection both).
      *
-     * @param {Function} onResolved Callback that to be called with the value after promise has been rejected
+     * @param {Function} onResolved Callback that to be called with the value after promise has been resolved
      * @param {Object} [ctx] Context of callback execution
      * @returns {vow:Promise}
      */
@@ -1330,7 +1339,7 @@ var vow = /** @exports vow */ {
      * @returns {vow:Promise}
      */
     cast : function(value) {
-        return vow.isPromise(value)?
+        return value && !!value._vow?
             value :
             vow.resolve(value);
     },
@@ -1726,7 +1735,7 @@ if(typeof module === 'object' && typeof module.exports === 'object') {
     defineAsGlobal = false;
 }
 
-if(typeof modules === 'object') {
+if(typeof modules === 'object' && isFunction(modules.define)) {
     modules.define('vow', function(provide) {
         provide(vow);
     });
@@ -1796,6 +1805,7 @@ var Client = function () {
 /**
  * Инициализирует сессию, авторизует пользователя.
  * @name cloud.client.initialize
+ * @function
  * @param {Object} options Опции.
  * @param {String} [options.key] Публичный ключ приложения.
  * @param {String} [options.token] OAuth-токен. Если
@@ -1868,6 +1878,7 @@ Client.prototype.initialize = function (options) {
 
 /**
  * @name cloud.client.isInitialized
+ * @function
  * @returns {Boolean} true - сессия инициализирована, клиент
  * аутентифицирован, false в противном случае.
  * @static
@@ -1878,6 +1889,7 @@ Client.prototype.isInitiaized = function () {
 
 /**
  * @name cloud.client.getToken
+ * @function
  * @returns {String|null} OAuth-токен или null, если сессия
  * не была инициализирована.
  * @static
@@ -1896,6 +1908,7 @@ ns.modules.define('cloud.client', [], function (provide) {
      */
     provide(ns.cloud.client);
 });
+
 /**
  * @class Основной неймпспейс для работы с Data API Диска.
  * @name cloud.dataSyncApi
@@ -2446,6 +2459,56 @@ ns.modules.define('component.util', function (provide) {
 
     provide(util);
 });
+ns.modules.define('cloud.dataSyncApi.Conflict', [
+    'component.util'
+], function (provide, util) {
+    /**
+     * @class Описание конфликта, который может произойти
+     * при попытке применить некорректную транзакцию.
+     * @name cloud.dataSyncApi.Conflict
+     * @noconstructor
+     */
+    var Conflict = function (properties) {
+            this._type = properties.type;
+            this._fieldChangeConflicts = properties.field_change_conflicts;
+        };
+
+    util.defineClass(Conflict, /** @lends cloud.dataSyncApi.Conflict.prototype */ {
+        /**
+         * <p>Возвращает тип конфликта. Допустимые значения:</p>
+         * <ul>
+         *     <li>record_already_exists — возникает при попытке
+         * создать запись с идентификатором, который уже есть в указанной
+         * коллекции;</li>
+         *     <li>delete_non_existent_record — возникает при попытке
+         * удалить несуществующую запись;</li>
+         *     <li>update_non_existent_record — возникает при попытке
+         * изменить несуществующую запись;</li>
+         *     <li>both_modified — возникает в ситуации, когда
+         * запись была изменена на удалённом сервере;</li>
+         *     <li>invalid_field_change — возникает при попытке выполнения
+         * некорректной операции над отдельным полем записи.</li>
+         * </ul>
+         * @returns {String} Тип конфликта.
+         */
+        getType: function () {
+            return this._type;
+        },
+
+        /**
+         * Для конфликтов типа invalid_field_change возвращает детализацию
+         * конфликта: какая из операций над полями приводит к ошибке.
+         * @returns {Object[]} Конфликты при изменении полей записи
+         * в виде массива json-объектов с полями index (индекс операции)
+         * и type (тип конфликта).
+         */
+        getFieldChangeConflicts: function () {
+            return this._fieldChangeConflicts;
+        }
+    });
+
+    provide(Conflict);
+});
 ns.modules.define('component.xhr', [
     'global',
     'vow',
@@ -2551,353 +2614,6 @@ ns.modules.define('component.xhr', [
             }
         });
     });
-});
-ns.modules.define('cloud.dataSyncApi.Conflict', [
-    'component.util'
-], function (provide, util) {
-    /**
-     * @class Описание конфликта, который может произойти
-     * при попытке применить некорректную транзакцию.
-     * @name cloud.dataSyncApi.Conflict
-     * @noconstructor
-     */
-    var Conflict = function (properties) {
-            this._type = properties.type;
-            this._fieldChangeConflicts = properties.field_change_conflicts;
-        };
-
-    util.defineClass(Conflict, /** @lends cloud.dataSyncApi.Conflict.prototype */ {
-        /**
-         * <p>Возвращает тип конфликта. Допустимые значения:</p>
-         * <ul>
-         *     <li>record_already_exists — возникает при попытке
-         * создать запись с идентификатором, который уже есть в указанной
-         * коллекции;</li>
-         *     <li>delete_non_existent_record — возникает при попытке
-         * удалить несуществующую запись;</li>
-         *     <li>update_non_existent_record — возникает при попытке
-         * изменить несуществующую запись;</li>
-         *     <li>both_modified — возникает в ситуации, когда
-         * запись была изменена на удалённом сервере;</li>
-         *     <li>invalid_field_change — возникает при попытке выполнения
-         * некорректной операции над отдельным полем записи.</li>
-         * </ul>
-         * @returns {String} Тип конфликта.
-         */
-        getType: function () {
-            return this._type;
-        },
-
-        /**
-         * Для конфликтов типа invalid_field_change возвращает детализацию
-         * конфликта: какая из операций над полями приводит к ошибке.
-         * @returns {Object[]} Конфликты при изменении полей записи
-         * в виде массива json-объектов с полями index (индекс операции)
-         * и type (тип конфликта).
-         */
-        getFieldChangeConflicts: function () {
-            return this._fieldChangeConflicts;
-        }
-    });
-
-    provide(Conflict);
-});
-ns.modules.define('cloud.dataSyncApi.Dataset', [
-    'cloud.dataSyncApi.Record',
-    'cloud.dataSyncApi.Operation',
-    'cloud.dataSyncApi.FieldOperation',
-    'cloud.dataSyncApi.Conflict',
-    'cloud.Error',
-    'component.util'
-], function (provide, Record, Operation, FieldOperation, Conflict, Error, util) {
-    var Dataset = function (revision, records) {
-            var index = this._index = {};
-            this._revision = Number(revision);
-            this._revisionHistory = [];
-            this._records = records.map(function (record) {
-                if (!(record instanceof Record)) {
-                    record = new Record(record);
-                }
-                var collection_id = record.getCollectionId(),
-                    record_id = record.getRecordId();
-                if (!index[collection_id]) {
-                    index[collection_id] = {};
-                }
-                if (index[collection_id][record_id]) {
-                    throw new Error ({
-                        message: 'Record with `collection_id` and `record_id` provided already exists',
-                        collection_id: collection_id,
-                        record_id: record_id
-                    });
-                } else {
-                    index[collection_id][record_id] = record;
-                }
-                return record;
-            });
-        };
-
-    Dataset.json = {
-        deserialize: function (json) {
-            return new Dataset(
-                json.revision,
-                json.records.items.map(function (item) {
-                    return Record.json.deserialize(item);
-                })
-            );
-        }
-    };
-
-    util.defineClass(Dataset, {
-        getRecord: function (collection_id, record_id) {
-            if (!collection_id) {
-                throw new Error({
-                    message: '`collection_id` Parameter Required'
-                });
-            }
-            if (!record_id) {
-                throw new Error({
-                    message: '`record_id` Parameter Required'
-                });
-            }
-            return this._index[collection_id] && this._index[collection_id][record_id];
-        },
-
-        getRevision: function () {
-            return this._revision;
-        },
-
-        getLength: function () {
-            return this._records.length;
-        },
-
-        iterator: function (collection_id) {
-            var counter = -1,
-                records = this._records;
-            return {
-                next: function () {
-                    if (collection_id) {
-                        do {
-                            counter++;
-                        } while (counter < records.length && records[counter].getCollectionId() != collection_id);
-                    } else {
-                        counter++;
-                    }
-                    if (counter < records.length) {
-                        return {
-                            value: records[counter]
-                        };
-                    }
-                    return {
-                        done: true
-                    };
-                }
-            };
-        },
-
-        applyDeltas: function (deltas) {
-            var index = this._index,
-                revisionHistory = this._revisionHistory,
-                revision = this._revision;
-
-            deltas.forEach(function (delta) {
-                var alteredRecords = {};
-
-                if (delta.base_revision != revision) {
-                    throw new Error({
-                        message: 'Incorrect delta base_revision'
-                    });
-                }
-
-                delta.changes.forEach(function (change) {
-                    var collection_id = change.collection_id,
-                        record_id = change.record_id;
-
-                    if (!alteredRecords[collection_id]) {
-                        alteredRecords[collection_id] = {};
-                    }
-                    alteredRecords[collection_id][record_id] = true;
-
-                    switch (change.change_type) {
-                        case 'insert':
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(change, true);
-                            break;
-                        case 'delete':
-                            delete index[collection_id][record_id];
-                            break;
-                        case 'update':
-                            var record = index[collection_id][record_id];
-                            change.changes.forEach(function (fieldChange) {
-                                record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
-                            });
-                            break;
-                    }
-                });
-
-                revisionHistory.push({
-                    base_revision: delta.base_revision,
-                    revision: delta.revision,
-                    alteredRecords: alteredRecords
-                });
-
-                revision = delta.revision;
-            });
-
-            var records = this._records = [];
-            Object.keys(index).forEach(function (collection_id) {
-                Object.keys(index[collection_id]).forEach(function (record_id) {
-                    records.push(index[collection_id][record_id]);
-                });
-            });
-            this._revision = revision;
-        },
-
-        ifModifiedSince: function (options) {
-            var collection_id = options.collection_id,
-                record_id = options.record_id,
-                revision = options.revision;
-
-            for (var i = 0, after = false; i < this._revisionHistory.length; i++) {
-                var item = this._revisionHistory[i];
-
-                if (item.base_revision == revision) {
-                        after = true;
-                }
-                if (after && item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
-                    return true;
-                }
-            }
-
-            return false;
-        },
-
-        dryRun: function (revision, operations) {
-            var conflicts = [],
-                index = copyIndex(this._index),
-                originalIndex = this._index;
-
-            operations.forEach(function (operation, i) {
-                var collection_id = operation.getCollectionId(),
-                    record_id = operation.getRecordId();
-
-                if (this.ifModifiedSince({
-                    collection_id: collection_id,
-                    record_id: record_id,
-                    revision: revision
-                })) {
-                    conflicts.push({
-                        index: i,
-                        conflict: new Conflict({
-                            type: 'both_modified',
-                            operation: operation
-                        })
-                    });
-                } else {
-                    switch (operation.getType()) {
-                        case 'insert':
-                            if (index[collection_id] && index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'record_already_exists',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                if (!index[collection_id]) {
-                                    index[collection_id] = {};
-                                }
-                                index[collection_id][record_id] = Record.json.deserialize(
-                                    Operation.json.serialize(operation), true
-                                );
-                            }
-                            break;
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(
-                                Operation.json.serialize(operation), true
-                            );
-                            break;
-                        case 'delete':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'delete_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                delete index[collection_id][record_id];
-                            }
-                            break;
-                        case 'update':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'update_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                var record = index[collection_id][record_id],
-                                    fieldChangeConflicts = [];
-
-                                if (record === true) {
-                                    record = originalIndex[collection_id][record_id].copy();
-                                }
-
-                                operation.getFieldOperations().forEach(function (fieldOperation, index) {
-                                    var error = record.dryRun(fieldOperation);
-                                    if (error) {
-                                        fieldChangeConflicts.push({
-                                            type: error,
-                                            index: index
-                                        });
-                                    } else {
-                                        record.applyFieldOperation(fieldOperation);
-                                    }
-                                });
-
-                                if (fieldChangeConflicts.length) {
-                                    conflicts.push({
-                                        index: i,
-                                        conflict: new Conflict({
-                                            type: 'invalid_field_change',
-                                            operation: operation,
-                                            field_change_conflicts: fieldChangeConflicts
-                                        })
-                                    });
-                                } else {
-                                    index[collection_id][record_id] = record;
-                                }
-                            }
-                            break;
-                    }
-                }
-            }, this);
-
-            return conflicts;
-        }
-    });
-
-    function copyIndex (index) {
-        return Object.keys(index).reduce(function (copy, collection_id) {
-            copy[collection_id] = Object.keys(index[collection_id]).reduce(function (collection, record_id) {
-                collection[record_id] = true;
-                return collection;
-            }, {});
-            return copy;
-        }, {});
-    }
-
-    provide(Dataset);
 });
 ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.config',
@@ -3370,6 +3086,303 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     provide(Database);
 });
 
+ns.modules.define('cloud.dataSyncApi.Dataset', [
+    'cloud.dataSyncApi.Record',
+    'cloud.dataSyncApi.Operation',
+    'cloud.dataSyncApi.FieldOperation',
+    'cloud.dataSyncApi.Conflict',
+    'cloud.Error',
+    'component.util'
+], function (provide, Record, Operation, FieldOperation, Conflict, Error, util) {
+    var Dataset = function (revision, records) {
+            var index = this._index = {};
+            this._revision = Number(revision);
+            this._revisionHistory = [];
+            this._records = records.map(function (record) {
+                if (!(record instanceof Record)) {
+                    record = new Record(record);
+                }
+                var collection_id = record.getCollectionId(),
+                    record_id = record.getRecordId();
+                if (!index[collection_id]) {
+                    index[collection_id] = {};
+                }
+                if (index[collection_id][record_id]) {
+                    throw new Error ({
+                        message: 'Record with `collection_id` and `record_id` provided already exists',
+                        collection_id: collection_id,
+                        record_id: record_id
+                    });
+                } else {
+                    index[collection_id][record_id] = record;
+                }
+                return record;
+            });
+        };
+
+    Dataset.json = {
+        deserialize: function (json) {
+            return new Dataset(
+                json.revision,
+                json.records.items.map(function (item) {
+                    return Record.json.deserialize(item);
+                })
+            );
+        }
+    };
+
+    util.defineClass(Dataset, {
+        getRecord: function (collection_id, record_id) {
+            if (!collection_id) {
+                throw new Error({
+                    message: '`collection_id` Parameter Required'
+                });
+            }
+            if (!record_id) {
+                throw new Error({
+                    message: '`record_id` Parameter Required'
+                });
+            }
+            return this._index[collection_id] && this._index[collection_id][record_id];
+        },
+
+        getRevision: function () {
+            return this._revision;
+        },
+
+        getLength: function () {
+            return this._records.length;
+        },
+
+        iterator: function (collection_id) {
+            var counter = -1,
+                records = this._records;
+            return {
+                next: function () {
+                    if (collection_id) {
+                        do {
+                            counter++;
+                        } while (counter < records.length && records[counter].getCollectionId() != collection_id);
+                    } else {
+                        counter++;
+                    }
+                    if (counter < records.length) {
+                        return {
+                            value: records[counter]
+                        };
+                    }
+                    return {
+                        done: true
+                    };
+                }
+            };
+        },
+
+        applyDeltas: function (deltas) {
+            var index = this._index,
+                revisionHistory = this._revisionHistory,
+                revision = this._revision;
+
+            deltas.forEach(function (delta) {
+                var alteredRecords = {};
+
+                if (delta.base_revision != revision) {
+                    throw new Error({
+                        message: 'Incorrect delta base_revision'
+                    });
+                }
+
+                delta.changes.forEach(function (change) {
+                    var collection_id = change.collection_id,
+                        record_id = change.record_id;
+
+                    if (!alteredRecords[collection_id]) {
+                        alteredRecords[collection_id] = {};
+                    }
+                    alteredRecords[collection_id][record_id] = true;
+
+                    switch (change.change_type) {
+                        case 'insert':
+                        case 'set':
+                            if (!index[collection_id]) {
+                                index[collection_id] = {};
+                            }
+                            index[collection_id][record_id] = Record.json.deserialize(change, true);
+                            break;
+                        case 'delete':
+                            delete index[collection_id][record_id];
+                            break;
+                        case 'update':
+                            var record = index[collection_id][record_id];
+                            change.changes.forEach(function (fieldChange) {
+                                record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
+                            });
+                            break;
+                    }
+                });
+
+                revisionHistory.push({
+                    base_revision: delta.base_revision,
+                    revision: delta.revision,
+                    alteredRecords: alteredRecords
+                });
+
+                revision = delta.revision;
+            });
+
+            var records = this._records = [];
+            Object.keys(index).forEach(function (collection_id) {
+                Object.keys(index[collection_id]).forEach(function (record_id) {
+                    records.push(index[collection_id][record_id]);
+                });
+            });
+            this._revision = revision;
+        },
+
+        ifModifiedSince: function (options) {
+            var collection_id = options.collection_id,
+                record_id = options.record_id,
+                revision = options.revision;
+
+            for (var i = 0, after = false; i < this._revisionHistory.length; i++) {
+                var item = this._revisionHistory[i];
+
+                if (item.base_revision == revision) {
+                        after = true;
+                }
+                if (after && item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
+                    return true;
+                }
+            }
+
+            return false;
+        },
+
+        dryRun: function (revision, operations) {
+            var conflicts = [],
+                index = copyIndex(this._index),
+                originalIndex = this._index;
+
+            operations.forEach(function (operation, i) {
+                var collection_id = operation.getCollectionId(),
+                    record_id = operation.getRecordId();
+
+                if (this.ifModifiedSince({
+                    collection_id: collection_id,
+                    record_id: record_id,
+                    revision: revision
+                })) {
+                    conflicts.push({
+                        index: i,
+                        conflict: new Conflict({
+                            type: 'both_modified',
+                            operation: operation
+                        })
+                    });
+                } else {
+                    switch (operation.getType()) {
+                        case 'insert':
+                            if (index[collection_id] && index[collection_id][record_id]) {
+                                conflicts.push({
+                                    index: i,
+                                    conflict: new Conflict({
+                                        type: 'record_already_exists',
+                                        operation: operation
+                                    })
+                                });
+                            } else {
+                                if (!index[collection_id]) {
+                                    index[collection_id] = {};
+                                }
+                                index[collection_id][record_id] = Record.json.deserialize(
+                                    Operation.json.serialize(operation), true
+                                );
+                            }
+                            break;
+                        case 'set':
+                            if (!index[collection_id]) {
+                                index[collection_id] = {};
+                            }
+                            index[collection_id][record_id] = Record.json.deserialize(
+                                Operation.json.serialize(operation), true
+                            );
+                            break;
+                        case 'delete':
+                            if (!index[collection_id] || !index[collection_id][record_id]) {
+                                conflicts.push({
+                                    index: i,
+                                    conflict: new Conflict({
+                                        type: 'delete_non_existent_record',
+                                        operation: operation
+                                    })
+                                });
+                            } else {
+                                delete index[collection_id][record_id];
+                            }
+                            break;
+                        case 'update':
+                            if (!index[collection_id] || !index[collection_id][record_id]) {
+                                conflicts.push({
+                                    index: i,
+                                    conflict: new Conflict({
+                                        type: 'update_non_existent_record',
+                                        operation: operation
+                                    })
+                                });
+                            } else {
+                                var record = index[collection_id][record_id],
+                                    fieldChangeConflicts = [];
+
+                                if (record === true) {
+                                    record = originalIndex[collection_id][record_id].copy();
+                                }
+
+                                operation.getFieldOperations().forEach(function (fieldOperation, index) {
+                                    var error = record.dryRun(fieldOperation);
+                                    if (error) {
+                                        fieldChangeConflicts.push({
+                                            type: error,
+                                            index: index
+                                        });
+                                    } else {
+                                        record.applyFieldOperation(fieldOperation);
+                                    }
+                                });
+
+                                if (fieldChangeConflicts.length) {
+                                    conflicts.push({
+                                        index: i,
+                                        conflict: new Conflict({
+                                            type: 'invalid_field_change',
+                                            operation: operation,
+                                            field_change_conflicts: fieldChangeConflicts
+                                        })
+                                    });
+                                } else {
+                                    index[collection_id][record_id] = record;
+                                }
+                            }
+                            break;
+                    }
+                }
+            }, this);
+
+            return conflicts;
+        }
+    });
+
+    function copyIndex (index) {
+        return Object.keys(index).reduce(function (copy, collection_id) {
+            copy[collection_id] = Object.keys(index[collection_id]).reduce(function (collection, record_id) {
+                collection[record_id] = true;
+                return collection;
+            }, {});
+            return copy;
+        }, {});
+    }
+
+    provide(Dataset);
+});
 ns.modules.define('cloud.dataSyncApi.FieldOperation', [
     'component.util',
     'cloud.dataSyncApi.Value'
@@ -3503,116 +3516,6 @@ ns.modules.define('cloud.dataSyncApi.FieldOperation', [
     });
 
     provide(FieldOperation);
-});
-ns.modules.define('cloud.dataSyncApi.Operation', [
-    'cloud.dataSyncApi.FieldOperation',
-    'cloud.dataSyncApi.Record',
-    'component.util'
-], function (provide, FieldOperation, Record, util) {
-    /**
-     * @class Операция над БД.
-     * @name cloud.dataSyncApi.Operation
-     * @param {Object} properties Параметры операции.
-     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
-     * <ul>
-     *     <li>insert — добавление записи;</li>
-     *     <li>delete — удаление записи;</li>
-     *     <li>set — перезадание записи;</li>
-     *     <li>update — изменение отдельных полей записи.</li>
-     * </ul>
-     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
-     * выполняется операция.
-     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
-     * операция.
-     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
-     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
-     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
-     */
-    var Operation = function (properties) {
-            this._type = properties.type;
-            this._collectionId = properties.collection_id;
-            this._recordId = properties.record_id;
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                this._fieldOperations = (properties.field_operations || []).map(function (change) {
-                    if (change instanceof FieldOperation) {
-                        return change;
-                    } else {
-                        return new FieldOperation(change);
-                    }
-                });
-            } else {
-                this._fieldOperations = null;
-            }
-        };
-
-    Operation.json = {
-        serialize: function (operation) {
-            var type = operation.getType(),
-                res = {
-                    record_id: operation.getRecordId(),
-                    collection_id: operation.getCollectionId(),
-                    change_type: type
-                };
-
-            if (['insert', 'update', 'set'].indexOf(type) != -1) {
-                res.changes = operation.getFieldOperations().map(function (change) {
-                    return FieldOperation.json.serialize(change);
-                });
-            }
-
-            return res;
-        },
-
-        deserialize: function (serialized) {
-            var type = serialized.change_type,
-                properties = {
-                    type: type,
-                    record_id: serialized.record_id,
-                    collection_id: serialized.collection_id
-                };
-
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                properties.field_changes = serialized.changes.map(function (change) {
-                    return FieldOperation.json.deserialize(change)
-                });
-            }
-
-            return new Operation(properties);
-        }
-    };
-
-    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
-        /**
-         * @returns {String} Тип операции.
-         */
-        getType: function () {
-            return this._type;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор записи.
-         */
-        getRecordId: function () {
-            return this._recordId;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор коллекции.
-         */
-        getCollectionId: function () {
-            return this._collectionId;
-        },
-
-        /**
-         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
-         * операций над полями записи.
-         */
-        getFieldOperations: function () {
-            return this._fieldOperations ? this._fieldOperations.slice() : null;
-        }
-    });
-
-    provide(Operation);
 });
 ns.modules.define('cloud.dataSyncApi.Record', [
     'cloud.Error',
@@ -3825,6 +3728,446 @@ ns.modules.define('cloud.dataSyncApi.Record', [
 
     provide(Record);
 });
+ns.modules.define('cloud.dataSyncApi.Operation', [
+    'cloud.dataSyncApi.FieldOperation',
+    'cloud.dataSyncApi.Record',
+    'component.util'
+], function (provide, FieldOperation, Record, util) {
+    /**
+     * @class Операция над БД.
+     * @name cloud.dataSyncApi.Operation
+     * @param {Object} properties Параметры операции.
+     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
+     * <ul>
+     *     <li>insert — добавление записи;</li>
+     *     <li>delete — удаление записи;</li>
+     *     <li>set — перезадание записи;</li>
+     *     <li>update — изменение отдельных полей записи.</li>
+     * </ul>
+     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
+     * выполняется операция.
+     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
+     * операция.
+     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
+     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
+     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
+     */
+    var Operation = function (properties) {
+            this._type = properties.type;
+            this._collectionId = properties.collection_id;
+            this._recordId = properties.record_id;
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                this._fieldOperations = (properties.field_operations || []).map(function (change) {
+                    if (change instanceof FieldOperation) {
+                        return change;
+                    } else {
+                        return new FieldOperation(change);
+                    }
+                });
+            } else {
+                this._fieldOperations = null;
+            }
+        };
+
+    Operation.json = {
+        serialize: function (operation) {
+            var type = operation.getType(),
+                res = {
+                    record_id: operation.getRecordId(),
+                    collection_id: operation.getCollectionId(),
+                    change_type: type
+                };
+
+            if (['insert', 'update', 'set'].indexOf(type) != -1) {
+                res.changes = operation.getFieldOperations().map(function (change) {
+                    return FieldOperation.json.serialize(change);
+                });
+            }
+
+            return res;
+        },
+
+        deserialize: function (serialized) {
+            var type = serialized.change_type,
+                properties = {
+                    type: type,
+                    record_id: serialized.record_id,
+                    collection_id: serialized.collection_id
+                };
+
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                properties.field_changes = serialized.changes.map(function (change) {
+                    return FieldOperation.json.deserialize(change)
+                });
+            }
+
+            return new Operation(properties);
+        }
+    };
+
+    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
+        /**
+         * @returns {String} Тип операции.
+         */
+        getType: function () {
+            return this._type;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор записи.
+         */
+        getRecordId: function () {
+            return this._recordId;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор коллекции.
+         */
+        getCollectionId: function () {
+            return this._collectionId;
+        },
+
+        /**
+         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
+         * операций над полями записи.
+         */
+        getFieldOperations: function () {
+            return this._fieldOperations ? this._fieldOperations.slice() : null;
+        }
+    });
+
+    provide(Operation);
+});
+ns.modules.define('cloud.dataSyncApi.Transaction', [
+    'cloud.dataSyncApi.Record',
+    'cloud.dataSyncApi.Operation',
+    'cloud.dataSyncApi.FieldOperation',
+    'component.util'
+], function (provide, Record, Operation, FieldOperation, util) {
+        /**
+         * @noconstructor
+         * @class Транзакция БД. Позволяет модифицировать
+         * данные и отправить изменения на удалённый сервер.
+         * @see cloud.dataSyncApi.Database.createTransaction
+         * @name cloud.dataSyncApi.Transaction
+         */
+    var Transaction = function (database, patchCallback) {
+            this._database = database;
+            this._patchCallback = patchCallback;
+            this._deltaId = 'ya_cloud_data_js_api_1_' + Math.random().toString();
+            this._baseRevision = database.getRevision();
+            this._operations = [];
+        };
+
+    util.defineClass(Transaction, /** @lends cloud.dataSyncApi.Transaction.prototype */ {
+        /**
+         * Добавляет произвольный набор операций к транзакции.
+         * @param {cloud.dataSyncApi.Operation|cloud.dataSyncApi.Operation[]|Object|Object[]} operations Операция
+         * или массив операций для добавления в виде экземпляров класса {@link cloud.dataSyncApi.Operation}
+         * либо приводимых к нему json-объектов.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        addOperations: function (operations) {
+            [].push.apply(this._operations, [].concat(operations).map(function (operation) {
+                return operation instanceof Operation ? operation : new Operation(operation);
+            }));
+            return this;
+        },
+
+        /**
+         * Применяет транзакцию к базе данных и пересылает изменения
+         * на удалённый сервер.
+         * @param {String} [politics] Политика разрешения конфликтов.
+         * Если указана политика 'theirs', то, в случае конфликта, будет
+         * произведено обновление БД и повторная попытка переслать
+         * те из локальных изменений, которые не конфликтуют с текущим
+         * состоянием БД, и, таким образом, автоматически
+         * разрешить конфликт.
+         * @see cloud.dataSyncApi.Conflict
+         * @returns {vow.Promise} Объект-Promise, который будет подтверждён
+         * в случае успеха операции списком выполненных операций
+         * или отклонён с одной из следующих ошибок:
+         * <ul>
+         *     <li>400 — запрос некорректен;</li>
+         *     <li>401 — пользователь не авторизован;</li>
+         *     <li>403 — доступ запрещён;</li>
+         *     <li>409 — произошёл конфликт, в поле conflicts объекта-ошибки
+         * будет содержаться описание конфликтующих изменений в виде
+         * массива json-объектов с полями index и conflict;</li>
+         *     <li>429 — превышен лимит количества запросов;</li>
+         *     <li>500 — невозможно выполнить запрос.</li>
+         * </ul>
+         */
+        push: function (politics) {
+            return this._patchCallback({
+                delta_id: this._deltaId,
+                base_revision: this._baseRevision,
+                operations: this._operations
+            }, politics);
+        },
+
+        /**
+         * @returns {cloud.dataSyncApi.Database} Базу данных, к которой
+         * создана транзакция.
+         */
+        getDatabase: function () {
+            return this._database;
+        },
+
+        /**
+         * @returns {String} Номер ревизии, актуальной на момент
+         * создания транзации.
+         */
+        getBaseRevision: function () {
+            return this._baseRevision;
+        },
+
+        /**
+         * @returns {cloud.dataSyncApi.Operation[]} Массив операций,
+         * из которых состоит транзакция.
+         */
+        getOperations: function () {
+            return this._operations.slice();
+        },
+
+        /**
+         * Добавляет новые записи.
+         * @param {cloud.dataSyncApi.Record|cloud.dataSyncApi.Record[]|Object|Object[]} records
+         * Записи для добавления в виде экземпляров класса {@link cloud.dataSyncApi.Record} либо
+         * json-объектов, приводимых к ним.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        insertRecords: function (records) {
+            return this.addOperations([].concat(records).map(function (record) {
+                var options = castOperationOptions('insert', record);
+
+                if (record instanceof Record) {
+                    options.field_operations = record.getFieldIds().map(function (key) {
+                        return new FieldOperation({
+                            type: 'set',
+                            field_id: key,
+                            value: record.getFieldValue(key)
+                        });
+                    });
+                } else {
+                    options.field_operations = record.fields ? Object.keys(record.fields).map(function (key) {
+                        return new FieldOperation({
+                            type: 'set',
+                            field_id: key,
+                            value: record.fields[key]
+                        });
+                    }) : [];
+                }
+
+                return new Operation(options);
+            }));
+        },
+
+        /**
+         * Удаляет существующие записи.
+         * @param {cloud.dataSyncApi.Record|cloud.dataSyncApi.Record[]|Object|Object[]} records
+         * Массив записей для удаления, заданных либо ссылками на объекты {@link cloud.dataSyncApi.Record},
+         * либо json-объектами с полями record_id и collection_id.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        deleteRecords: function (records) {
+            return this.addOperations([].concat(records).map(function (record) {
+                return new Operation(castOperationOptions('delete', record));
+            }));
+        },
+
+        /**
+         * Заменяет поля в записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object|cloud.dataSyncApi.FieldOperation[]} fields Новые значения полей
+         * в виде JSON-объекта или массива объектов {@link cloud.dataSyncApi.FieldOperation}.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        setRecordFields: function (record, fields) {
+            var options = castOperationOptions('set', record);
+
+            if (Array.isArray(fields)) {
+                options.field_operations = fields;
+            } else {
+                options.field_operations = Object.keys(fields || {}).map(function (key) {
+                    return new FieldOperation({
+                        type: 'set',
+                        field_id: key,
+                        value: fields[key]
+                    });
+                });
+            }
+
+            return this.addOperations(new Operation(options));
+        },
+
+        /**
+         * Изменяет значения полей существующей записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object|cloud.dataSyncApi.FieldOperation[]} fields Новые значения полей
+         * в виде JSON-объекта или массива объектов {@link cloud.dataSyncApi.FieldOperation}.
+         * Если некоторое поле необходимо удалить, укажите для него значение undefined.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        updateRecordFields: function (record, fields) {
+            var options = castOperationOptions('update', record);
+
+            if (Array.isArray(fields)) {
+                options.field_operations = fields;
+            } else {
+                options.field_operations = Object.keys(fields).map(function (key) {
+                    if (typeof fields[key] == 'undefined') {
+                        return new FieldOperation({
+                            type: 'delete',
+                            field_id: key
+                        });
+                    } else {
+                        return new FieldOperation({
+                            type: 'set',
+                            field_id: key,
+                            value: fields[key]
+                        });
+                    }
+                });
+            }
+
+            return this.addOperations(new Operation(options));
+        },
+
+        /**
+         * Вставляет новый элемент в список, хранящийся в поле записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object} parameters Параметры операции.
+         * @param {String} parameters.field_id Имя спискового поля.
+         * @param {Integer} parameters.index Индекс позиции, в которую
+         * нужно вставить элемент.
+         * @param {cloud.dataSyncApi.Value|*} parameters.value Значение для вставки
+         * в список, заданное экземпляром класса cloud.dataSyncApi.Value или любым объектом,
+         * приводимым к нему.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        insertRecordFieldListItem: function (record, parameters) {
+            var options = castOperationOptions('update', record);
+
+            options.field_operations = [
+                new FieldOperation({
+                    type: 'list_item_insert',
+                    field_id: parameters.field_id,
+                    index: parameters.index,
+                    value: parameters.value
+                })
+            ];
+
+            return this.addOperations(new Operation(options));
+        },
+
+        /**
+         * Изменяет значение элемента списка, хранящегося в поле записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object} parameters Параметры операции.
+         * @param {String} parameters.field_id Имя спискового поля.
+         * @param {Integer} parameters.index Индекс позиции элемента, значение
+         * которого необходимо заменить.
+         * @param {cloud.dataSyncApi.Value|*} parameters.value Новое значение элемента,
+         * заданное экземпляром класса cloud.dataSyncApi.Value или любым объектом,
+         * приводимым к нему.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        setRecordFieldListItem: function (record, parameters) {
+            var options = castOperationOptions('update', record);
+
+            options.field_operations = [
+                new FieldOperation({
+                    type: 'list_item_set',
+                    field_id: parameters.field_id,
+                    index: parameters.index,
+                    value: parameters.value
+                })
+            ];
+
+            return this.addOperations(new Operation(options));
+        },
+
+        /**
+         * Перемещает элемент списка, хранящегося в поле записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object} parameters Параметры операции.
+         * @param {String} parameters.field_id Имя спискового поля.
+         * @param {Integer} parameters.index Индекс позиции элемента, положение
+         * которого необходимо заменить.
+         * @param {Integer} parameters.new_index Индекс новой позиции элемента
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        moveRecordFieldListItem: function (record, parameters) {
+            var options = castOperationOptions('update', record);
+
+            options.field_operations = [
+                new FieldOperation({
+                    type: 'list_item_move',
+                    field_id: parameters.field_id,
+                    index: parameters.index,
+                    new_index: parameters.new_index
+                })
+            ];
+
+            return this.addOperations(new Operation(options));
+        },
+
+        /**
+         * Удаляет элемент списка, хранящегося в поле записи.
+         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
+         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
+         * с полями record_id и collection_id.
+         * @param {Object} parameters Параметры операции.
+         * @param {String} parameters.field_id Имя спискового поля.
+         * @param {Integer} parameters.index Индекс позиции элемента, который
+         * необходимо удалить.
+         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
+         */
+        deleteRecordFieldListItem: function (record, parameters) {
+            var options = castOperationOptions('update', record);
+
+            options.field_operations = [
+                new FieldOperation({
+                    type: 'list_item_delete',
+                    field_id: parameters.field_id,
+                    index: parameters.index
+                })
+            ];
+
+            return this.addOperations(new Operation(options));
+        }
+    });
+
+    function castOperationOptions (type, record) {
+        var options = {
+                type: type
+            };
+
+        if (record instanceof Record) {
+            options.collection_id = record.getCollectionId();
+            options.record_id = record.getRecordId();
+        } else {
+            options.collection_id = record.collection_id;
+            options.record_id = record.record_id;
+        }
+
+        return options;
+    }
+
+    provide(Transaction);
+});
+
 ns.modules.define('cloud.dataSyncApi.config', function (provide) {
     provide({
         apiHost: 'https://cloud-api.yandex.net/',
@@ -3842,6 +4185,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
     'cloud.Error'
 ], function (provide, util, Error) {
     /**
+     * @name cloud.dataSyncApi.Value
      * @class Объект, представляющий значение поля записи.
      * @param {Object|*} properties Описание значения либо само значение.
      * @param {String} [properties.type] Тип поля.
@@ -4204,336 +4548,28 @@ ns.modules.define('cloud.dataSyncApi.Value', [
 
     provide(Value);
 });
-ns.modules.define('cloud.dataSyncApi.Transaction', [
-    'cloud.dataSyncApi.Record',
-    'cloud.dataSyncApi.Operation',
-    'cloud.dataSyncApi.FieldOperation',
-    'component.util'
-], function (provide, Record, Operation, FieldOperation, util) {
-        /**
-         * @noconstructor
-         * @class Транзакция БД. Позволяет модифицировать
-         * данные и отправить изменения на удалённый сервер.
-         * @see cloud.dataSyncApi.Database.createTransaction
-         * @name cloud.dataSyncApi.Transaction
-         */
-    var Transaction = function (database, patchCallback) {
-            this._database = database;
-            this._patchCallback = patchCallback;
-            this._deltaId = 'ya_cloud_data_js_api_1_' + Math.random().toString();
-            this._baseRevision = database.getRevision();
-            this._operations = [];
-        };
 
-    util.defineClass(Transaction, /** @lends cloud.dataSyncApi.Transaction.prototype */ {
-        /**
-         * Добавляет произвольный набор операций к транзакции.
-         * @param {cloud.dataSyncApi.Operation|cloud.dataSyncApi.Operation[]|Object|Object[]} operations Операция
-         * или массив операций для добавления в виде экземпляров класса {@link cloud.dataSyncApi.Operation}
-         * либо приводимых к нему json-объектов.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        addOperations: function (operations) {
-            [].push.apply(this._operations, [].concat(operations).map(function (operation) {
-                return operation instanceof Operation ? operation : new Operation(operation);
-            }));
-            return this;
-        },
+ns.modules.define('cloud.dataSyncApi.politics', [
 
-        /**
-         * Применяет транзакцию к базе данных и пересылает изменения
-         * на удалённый сервер.
-         * @param {String} [politics] Политика разрешения конфликтов.
-         * Если указана политика 'theirs', то, в случае конфликта, будет
-         * произведено обновление БД и повторная попытка переслать
-         * те из локальных изменений, которые не конфликтуют с текущим
-         * состоянием БД, и, таким образом, автоматически
-         * разрешить конфликт.
-         * @see cloud.dataSyncApi.Conflict
-         * @returns {vow.Promise} Объект-Promise, который будет подтверждён
-         * в случае успеха операции списком выполненных операций
-         * или отклонён с одной из следующих ошибок:
-         * <ul>
-         *     <li>400 — запрос некорректен;</li>
-         *     <li>401 — пользователь не авторизован;</li>
-         *     <li>403 — доступ запрещён;</li>
-         *     <li>409 — произошёл конфликт, в поле conflicts объекта-ошибки
-         * будет содержаться описание конфликтующих изменений в виде
-         * массива json-объектов с полями index и conflict;</li>
-         *     <li>429 — превышен лимит количества запросов;</li>
-         *     <li>500 — невозможно выполнить запрос.</li>
-         * </ul>
-         */
-        push: function (politics) {
-            return this._patchCallback({
-                delta_id: this._deltaId,
-                base_revision: this._baseRevision,
-                operations: this._operations
-            }, politics);
-        },
+], function (provide) {
+    provide({
+        theirs: function (operations, conflicts) {
+            var indexes = conflicts.reduce(function (indexes, conflict) {
+                    indexes[conflict.index] = true;
+                    return indexes;
+                }, {}),
+                result = [];
 
-        /**
-         * @returns {cloud.dataSyncApi.Database} Базу данных, к которой
-         * создана транзакция.
-         */
-        getDatabase: function () {
-            return this._database;
-        },
-
-        /**
-         * @returns {String} Номер ревизии, актуальной на момент
-         * создания транзации.
-         */
-        getBaseRevision: function () {
-            return this._baseRevision;
-        },
-
-        /**
-         * @returns {cloud.dataSyncApi.Operation[]} Массив операций,
-         * из которых состоит транзакция.
-         */
-        getOperations: function () {
-            return this._operations.slice();
-        },
-
-        /**
-         * Добавляет новые записи.
-         * @param {cloud.dataSyncApi.Record|cloud.dataSyncApi.Record[]|Object|Object[]} records
-         * Записи для добавления в виде экземпляров класса {@link cloud.dataSyncApi.Record} либо
-         * json-объектов, приводимых к ним.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        insertRecords: function (records) {
-            return this.addOperations([].concat(records).map(function (record) {
-                var options = castOperationOptions('insert', record);
-
-                if (record instanceof Record) {
-                    options.field_operations = record.getFieldIds().map(function (key) {
-                        return new FieldOperation({
-                            type: 'set',
-                            field_id: key,
-                            value: record.getFieldValue(key)
-                        });
-                    });
-                } else {
-                    options.field_operations = record.fields ? Object.keys(record.fields).map(function (key) {
-                        return new FieldOperation({
-                            type: 'set',
-                            field_id: key,
-                            value: record.fields[key]
-                        });
-                    }) : [];
+            operations.forEach(function (operation, index) {
+                if (!indexes[index]) {
+                    result.push(operation);
                 }
+            });
 
-                return new Operation(options);
-            }));
-        },
-
-        /**
-         * Удаляет существующие записи.
-         * @param {cloud.dataSyncApi.Record|cloud.dataSyncApi.Record[]|Object|Object[]} records
-         * Массив записей для удаления, заданных либо ссылками на объекты {@link cloud.dataSyncApi.Record},
-         * либо json-объектами с полями record_id и collection_id.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        deleteRecords: function (records) {
-            return this.addOperations([].concat(records).map(function (record) {
-                return new Operation(castOperationOptions('delete', record));
-            }));
-        },
-
-        /**
-         * Заменяет поля в записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object|cloud.dataSyncApi.FieldOperation[]} fields Новые значения полей
-         * в виде JSON-объекта или массива объектов {@link cloud.dataSyncApi.FieldOperation}.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        setRecordFields: function (record, fields) {
-            var options = castOperationOptions('set', record);
-
-            if (Array.isArray(fields)) {
-                options.field_operations = fields;
-            } else {
-                options.field_operations = Object.keys(fields || {}).map(function (key) {
-                    return new FieldOperation({
-                        type: 'set',
-                        field_id: key,
-                        value: fields[key]
-                    });
-                });
-            }
-
-            return this.addOperations(new Operation(options));
-        },
-
-        /**
-         * Изменяет значения полей существующей записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object|cloud.dataSyncApi.FieldOperation[]} fields Новые значения полей
-         * в виде JSON-объекта или массива объектов {@link cloud.dataSyncApi.FieldOperation}.
-         * Если некоторое поле необходимо удалить, укажите для него значение undefined.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        updateRecordFields: function (record, fields) {
-            var options = castOperationOptions('update', record);
-
-            if (Array.isArray(fields)) {
-                options.field_operations = fields;
-            } else {
-                options.field_operations = Object.keys(fields).map(function (key) {
-                    if (typeof fields[key] == 'undefined') {
-                        return new FieldOperation({
-                            type: 'delete',
-                            field_id: key
-                        });
-                    } else {
-                        return new FieldOperation({
-                            type: 'set',
-                            field_id: key,
-                            value: fields[key]
-                        });
-                    }
-                });
-            }
-
-            return this.addOperations(new Operation(options));
-        },
-
-        /**
-         * Вставляет новый элемент в список, хранящийся в поле записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object} parameters Параметры операции.
-         * @param {String} parameters.field_id Имя спискового поля.
-         * @param {Integer} parameters.index Индекс позиции, в которую
-         * нужно вставить элемент.
-         * @param {cloud.dataSyncApi.Value|*} parameters.value Значение для вставки
-         * в список, заданное экземпляром класса cloud.dataSyncApi.Value или любым объектом,
-         * приводимым к нему.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        insertRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
-
-            options.field_operations = [
-                new FieldOperation({
-                    type: 'list_item_insert',
-                    field_id: parameters.field_id,
-                    index: parameters.index,
-                    value: parameters.value
-                })
-            ];
-
-            return this.addOperations(new Operation(options));
-        },
-
-        /**
-         * Изменяет значение элемента списка, хранящегося в поле записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object} parameters Параметры операции.
-         * @param {String} parameters.field_id Имя спискового поля.
-         * @param {Integer} parameters.index Индекс позиции элемента, значение
-         * которого необходимо заменить.
-         * @param {cloud.dataSyncApi.Value|*} parameters.value Новое значение элемента,
-         * заданное экземпляром класса cloud.dataSyncApi.Value или любым объектом,
-         * приводимым к нему.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        setRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
-
-            options.field_operations = [
-                new FieldOperation({
-                    type: 'list_item_set',
-                    field_id: parameters.field_id,
-                    index: parameters.index,
-                    value: parameters.value
-                })
-            ];
-
-            return this.addOperations(new Operation(options));
-        },
-
-        /**
-         * Перемещает элемент списка, хранящегося в поле записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object} parameters Параметры операции.
-         * @param {String} parameters.field_id Имя спискового поля.
-         * @param {Integer} parameters.index Индекс позиции элемента, положение
-         * которого необходимо заменить.
-         * @param {Integer} parameters.new_index Индекс новой позиции элемента
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        moveRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
-
-            options.field_operations = [
-                new FieldOperation({
-                    type: 'list_item_move',
-                    field_id: parameters.field_id,
-                    index: parameters.index,
-                    new_index: parameters.new_index
-                })
-            ];
-
-            return this.addOperations(new Operation(options));
-        },
-
-        /**
-         * Удаляет элемент списка, хранящегося в поле записи.
-         * @param {Object|cloud.dataSyncApi.Record} record Запись для изменения,
-         * заданная в виде объекта {@link cloud.dataSyncApi.Record} или json-объекта
-         * с полями record_id и collection_id.
-         * @param {Object} parameters Параметры операции.
-         * @param {String} parameters.field_id Имя спискового поля.
-         * @param {Integer} parameters.index Индекс позиции элемента, который
-         * необходимо удалить.
-         * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
-         */
-        deleteRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
-
-            options.field_operations = [
-                new FieldOperation({
-                    type: 'list_item_delete',
-                    field_id: parameters.field_id,
-                    index: parameters.index
-                })
-            ];
-
-            return this.addOperations(new Operation(options));
+            return result;
         }
     });
-
-    function castOperationOptions (type, record) {
-        var options = {
-                type: type
-            };
-
-        if (record instanceof Record) {
-            options.collection_id = record.getCollectionId();
-            options.record_id = record.getRecordId();
-        } else {
-            options.collection_id = record.collection_id;
-            options.record_id = record.record_id;
-        }
-
-        return options;
-    }
-
-    provide(Transaction);
 });
-
 ns.modules.define('cloud.dataSyncApi.http', [
     'cloud.dataSyncApi.config',
     'cloud.client',
@@ -4719,27 +4755,6 @@ ns.modules.define('cloud.dataSyncApi.http', [
                     }
                 );
             });
-        }
-    });
-});
-ns.modules.define('cloud.dataSyncApi.politics', [
-
-], function (provide) {
-    provide({
-        theirs: function (operations, conflicts) {
-            var indexes = conflicts.reduce(function (indexes, conflict) {
-                    indexes[conflict.index] = true;
-                    return indexes;
-                }, {}),
-                result = [];
-
-            operations.forEach(function (operation, index) {
-                if (!indexes[index]) {
-                    result.push(operation);
-                }
-            });
-
-            return result;
         }
     });
 });
