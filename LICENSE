@@ -1,17 +1,8 @@
-Copyright 2014-2015 Yandex LLC and contributors <https://yandex.com/>
+© YANDEX LLC, 2015
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-<http://www.apache.org/licenses/LICENSE-2.0>
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-
+The Source Code called "Yandex DataSync JS API" available at https://github.com/yandex/datasync-js
+is subject to the terms of the Apache License 2.0 (hereinafter referred to as the "License").
+The text of the License is the following:
 ```
 -------------------------------------------------------------------------
                               Apache License
@@ -192,4 +183,4 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 
 END OF TERMS AND CONDITIONS
 ```
-
+A copy of the License is also available at http://www.apache.org/licenses/LICENSE-2.0.html
