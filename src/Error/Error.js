@@ -29,6 +29,13 @@ ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
             if (!this.message) {
                 this.message = messages[this.code];
             }
+
+            // http://stackoverflow.com/questions/1382107/whats-a-good-way-to-extend-error-in-javascript
+            if (Error.captureStackTrace) {
+                Error.captureStackTrace(this, CloudError);
+            } else {
+                this.stack = (new Error()).stack;
+            }
         };
 
     util.defineClass(CloudError, Error, {

@@ -17,6 +17,7 @@
     <script src="test.cloud.dataSyncApi.Dataset.js"></script>
     <script src="test.cloud.dataSyncApi.Database.js"></script>
     <script src="test.cloud.dataSyncApi.js"></script>
+    <script src="test.cloud.Error.js"></script>
     <script>
         ya.modules.require([
             'test.cloud.dataSyncApi.Value',
@@ -25,7 +26,8 @@
             'test.cloud.dataSyncApi.Transaction',
             'test.cloud.dataSyncApi.Dataset',
             'test.cloud.dataSyncApi.Database',
-            'test.cloud.dataSyncApi'
+            'test.cloud.dataSyncApi',
+            'test.cloud.Error'
         ], function () {
             mocha.run();
         });
