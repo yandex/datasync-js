@@ -96,7 +96,7 @@ ns.modules.define('cloud.dataSyncApi.Record', [
 
         /**
          * @param {String} field_id Имя поля.
-         * @returns {cloud.dataSyncApi.Value} Значение поля.
+         * @returns {cloud.dataSyncApi.Value|undefined} Значение поля.
          */
         getFieldValue: function (field_id) {
             return this._fields[field_id];
