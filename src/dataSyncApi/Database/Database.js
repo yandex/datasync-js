@@ -433,6 +433,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 callback.call(context || null, item.value, index++);
                 item = it.next();
             }
+
+            return this;
         },
 
         /**
