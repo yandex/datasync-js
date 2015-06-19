@@ -380,6 +380,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                     token: token,
                     context: context,
                     data: {
+                        delta_id: 'abcd',
                         changes: [
                             {
                                 record_id: 'rec',

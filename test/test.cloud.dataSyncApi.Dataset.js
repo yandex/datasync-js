@@ -395,7 +395,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     })
                 ];
 
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
 
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].index).to.be(0);
@@ -409,7 +409,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     field_operations: []
                 })
             ];
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].index).to.be(0);
             expect(conflicts[0].conflict.getType()).to.be('both_modified');
@@ -428,7 +428,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     field_operations: []
                 })
             ];
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].index).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('record_already_exists');
@@ -441,7 +441,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     field_operations: []
                 })
             ];
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
             expect(conflicts.length).to.be(0);
 
             operations = [
@@ -453,7 +453,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
             expect(conflicts.length).to.be(0);
         });
 
@@ -470,7 +470,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     })
                 ];
 
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
 
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('both_modified');
@@ -484,7 +484,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
 
             expect(conflicts.length).to.be(0);
 
@@ -502,7 +502,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     field_operations: []
                 })
             ];
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
             expect(conflicts.length).to.be(0);
 
         });
@@ -520,7 +520,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     })
                 ];
 
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
 
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('both_modified');
@@ -535,7 +535,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
 
             expect(conflicts.length).to.be(0);
 
@@ -547,7 +547,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('delete_non_existent_record');
 
@@ -563,7 +563,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     record_id: 'rec_reinstated'
                 })
             ];
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('delete_non_existent_record');
         });
@@ -581,7 +581,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     })
                 ];
 
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
 
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('both_modified');
@@ -595,7 +595,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(1, operations);
+            conflicts = dataset.dryRun(1, operations).conflicts;
 
             expect(conflicts.length).to.be(0);
 
@@ -613,7 +613,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     field_operations: []
                 })
             ];
-            conflicts = dataset.dryRun(0, operations);
+            conflicts = dataset.dryRun(0, operations).conflicts;
             expect(conflicts.length).to.be(2);
             expect(conflicts[0].conflict.getType()).to.be('update_non_existent_record');
             expect(conflicts[0].index).to.be(0);
@@ -642,7 +642,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                     })
                 ];
 
-            conflicts = dataset.dryRun(2, operations);
+            conflicts = dataset.dryRun(2, operations).conflicts;
             expect(conflicts.length).to.be(1);
             expect(conflicts[0].conflict.getType()).to.be('invalid_field_change');
             expect(conflicts[0].conflict.getFieldChangeConflicts()).to.eql([{
@@ -669,7 +669,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 })
             ];
 
-            conflicts = dataset.dryRun(2, operations);
+            conflicts = dataset.dryRun(2, operations).conflicts;
             expect(conflicts.length).to.be(0);
         })
     });

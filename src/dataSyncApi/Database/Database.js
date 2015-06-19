@@ -314,6 +314,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 var preparedOperation = prepareOperation(this._dataset, parameters, politicsKey),
                     operations = preparedOperation.operations,
                     conflicts = preparedOperation.conflicts,
+                    revisionHistory = preparedOperation.revisionHistory,
                     delta = {
                         base_revision: this.getRevision(),
                         delta_id: parameters.delta_id,
@@ -323,7 +324,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 if (conflicts.length) {
                     fail(new Error({
                         code: 409,
-                        conflicts: conflicts
+                        conflicts: conflicts,
+                        revisionHistory: revisionHistory
                     }));
                 } else {
                     if (operations.length) {
@@ -455,16 +457,18 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
     function prepareOperation (dataset, parameters, politicsKey) {
         var operations = parameters.operations,
-            conflicts = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations);
+            conflicts = result.conflicts;
 
         if (conflicts.length && politicsKey) {
             operations = politics[politicsKey](operations, conflicts);
-            conflicts = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations);
+            conflicts = result.conflicts;
         }
-
         return {
             operations: operations,
-            conflicts: conflicts
+            conflicts: conflicts,
+            revisionHistory: result.revisionHistory
         };
     }
 

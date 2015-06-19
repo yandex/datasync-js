@@ -135,8 +135,10 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
                 revisionHistory.push({
                     base_revision: delta.base_revision,
+                    delta_id: delta.delta_id,
                     revision: delta.revision,
-                    alteredRecords: alteredRecords
+                    alteredRecords: alteredRecords,
+                    changes: delta.changes
                 });
 
                 revision = delta.revision;
@@ -154,20 +156,29 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         ifModifiedSince: function (options) {
             var collection_id = options.collection_id,
                 record_id = options.record_id,
-                revision = options.revision;
+                revision = options.revision,
+                position = this._locateRevision(revision);
 
-            for (var i = 0, after = false; i < this._revisionHistory.length; i++) {
-                var item = this._revisionHistory[i];
+            if (position != -1) {
+                for (var i = position; i < this._revisionHistory.length; i++) {
+                    var item = this._revisionHistory[i];
 
-                if (item.base_revision == revision) {
-                        after = true;
-                }
-                if (after && item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
-                    return true;
+                    if (item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
+                        return true;
+                    }
                 }
             }
 
             return false;
+        },
+
+        _locateRevision: function (revision) {
+            for (var i = 0; i < this._revisionHistory.length; i++) {
+                if (this._revisionHistory[i].base_revision == revision) {
+                    return i;
+                }
+            }
+            return -1;
         },
 
         dryRun: function (revision, operations) {
@@ -279,7 +290,32 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                 }
             }, this);
 
-            return conflicts;
+            return {
+                conflicts: conflicts,
+                revisionHistory: conflicts.length ? this._getRevisionHistory(revision) : []
+            };
+        },
+
+        _getRevisionHistory: function (fromRevision) {
+            var position = this._locateRevision(fromRevision);
+            if (position != -1) {
+                var result = [];
+
+                for (var i = position; i < this._revisionHistory.length; i++) {
+                    var item = this._revisionHistory[i];
+
+                    result.push({
+                        base_revision: item.base_revision,
+                        revision: item.revision,
+                        delta_id: item.delta_id,
+                        operations: makeOperations(item.changes)
+                    });
+                }
+
+                return result;
+            } else {
+                return [];
+            }
         }
     });
 
@@ -291,6 +327,12 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
             }, {});
             return copy;
         }, {});
+    }
+
+    function makeOperations (changes) {
+        return changes.map(function (change) {
+            return Operation.json.deserialize(change);
+        });
     }
 
     provide(Dataset);
