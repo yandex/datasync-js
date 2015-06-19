@@ -439,7 +439,7 @@ var module = { exports: {} }, exports = {};
 /**
  * @module vow
  * @author Filatov Dmitry <dfilatov@yandex-team.ru>
- * @version 0.4.9
+ * @version 0.4.7
  * @license
  * Dual licensed under the MIT and GPL licenses:
  *   * http://www.opensource.org/licenses/mit-license.php
@@ -825,7 +825,7 @@ Promise.prototype = /** @lends Promise.prototype */ {
     /**
      * Adds resolving reaction (to fulfillment and rejection both).
      *
-     * @param {Function} onResolved Callback that to be called with the value after promise has been resolved
+     * @param {Function} onResolved Callback that to be called with the value after promise has been rejected
      * @param {Object} [ctx] Context of callback execution
      * @returns {vow:Promise}
      */
@@ -1339,7 +1339,7 @@ var vow = /** @exports vow */ {
      * @returns {vow:Promise}
      */
     cast : function(value) {
-        return value && !!value._vow?
+        return vow.isPromise(value)?
             value :
             vow.resolve(value);
     },
@@ -1735,7 +1735,7 @@ if(typeof module === 'object' && typeof module.exports === 'object') {
     defineAsGlobal = false;
 }
 
-if(typeof modules === 'object' && isFunction(modules.define)) {
+if(typeof modules === 'object') {
     modules.define('vow', function(provide) {
         provide(vow);
     });
@@ -1786,6 +1786,13 @@ ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
             if (!this.message) {
                 this.message = messages[this.code];
             }
+
+            // http://stackoverflow.com/questions/1382107/whats-a-good-way-to-extend-error-in-javascript
+            if (Error.captureStackTrace) {
+                Error.captureStackTrace(this, CloudError);
+            } else {
+                this.stack = (new Error()).stack;
+            }
         };
 
     util.defineClass(CloudError, Error, {
@@ -1796,6 +1803,7 @@ ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
 
     provide(CloudError);
 });
+
 var Client = function () {
     this._initialized = false;
     this._key = null;
@@ -2931,6 +2939,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 var preparedOperation = prepareOperation(this._dataset, parameters, politicsKey),
                     operations = preparedOperation.operations,
                     conflicts = preparedOperation.conflicts,
+                    revisionHistory = preparedOperation.revisionHistory,
                     delta = {
                         base_revision: this.getRevision(),
                         delta_id: parameters.delta_id,
@@ -2940,7 +2949,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 if (conflicts.length) {
                     fail(new Error({
                         code: 409,
-                        conflicts: conflicts
+                        conflicts: conflicts,
+                        revisionHistory: revisionHistory
                     }));
                 } else {
                     if (operations.length) {
@@ -3050,6 +3060,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 callback.call(context || null, item.value, index++);
                 item = it.next();
             }
+
+            return this;
         },
 
         /**
@@ -3070,16 +3082,18 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
     function prepareOperation (dataset, parameters, politicsKey) {
         var operations = parameters.operations,
-            conflicts = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations);
+            conflicts = result.conflicts;
 
         if (conflicts.length && politicsKey) {
             operations = politics[politicsKey](operations, conflicts);
-            conflicts = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations);
+            conflicts = result.conflicts;
         }
-
         return {
             operations: operations,
-            conflicts: conflicts
+            conflicts: conflicts,
+            revisionHistory: result.revisionHistory
         };
     }
 
@@ -3223,8 +3237,10 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
                 revisionHistory.push({
                     base_revision: delta.base_revision,
+                    delta_id: delta.delta_id,
                     revision: delta.revision,
-                    alteredRecords: alteredRecords
+                    alteredRecords: alteredRecords,
+                    changes: delta.changes
                 });
 
                 revision = delta.revision;
@@ -3242,20 +3258,29 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         ifModifiedSince: function (options) {
             var collection_id = options.collection_id,
                 record_id = options.record_id,
-                revision = options.revision;
+                revision = options.revision,
+                position = this._locateRevision(revision);
 
-            for (var i = 0, after = false; i < this._revisionHistory.length; i++) {
-                var item = this._revisionHistory[i];
+            if (position != -1) {
+                for (var i = position; i < this._revisionHistory.length; i++) {
+                    var item = this._revisionHistory[i];
 
-                if (item.base_revision == revision) {
-                        after = true;
-                }
-                if (after && item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
-                    return true;
+                    if (item.alteredRecords[collection_id] && item.alteredRecords[collection_id][record_id]) {
+                        return true;
+                    }
                 }
             }
 
             return false;
+        },
+
+        _locateRevision: function (revision) {
+            for (var i = 0; i < this._revisionHistory.length; i++) {
+                if (this._revisionHistory[i].base_revision == revision) {
+                    return i;
+                }
+            }
+            return -1;
         },
 
         dryRun: function (revision, operations) {
@@ -3367,7 +3392,32 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                 }
             }, this);
 
-            return conflicts;
+            return {
+                conflicts: conflicts,
+                revisionHistory: conflicts.length ? this._getRevisionHistory(revision) : []
+            };
+        },
+
+        _getRevisionHistory: function (fromRevision) {
+            var position = this._locateRevision(fromRevision);
+            if (position != -1) {
+                var result = [];
+
+                for (var i = position; i < this._revisionHistory.length; i++) {
+                    var item = this._revisionHistory[i];
+
+                    result.push({
+                        base_revision: item.base_revision,
+                        revision: item.revision,
+                        delta_id: item.delta_id,
+                        operations: makeOperations(item.changes)
+                    });
+                }
+
+                return result;
+            } else {
+                return [];
+            }
         }
     });
 
@@ -3379,6 +3429,12 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
             }, {});
             return copy;
         }, {});
+    }
+
+    function makeOperations (changes) {
+        return changes.map(function (change) {
+            return Operation.json.deserialize(change);
+        });
     }
 
     provide(Dataset);
@@ -3517,6 +3573,116 @@ ns.modules.define('cloud.dataSyncApi.FieldOperation', [
 
     provide(FieldOperation);
 });
+ns.modules.define('cloud.dataSyncApi.Operation', [
+    'cloud.dataSyncApi.FieldOperation',
+    'cloud.dataSyncApi.Record',
+    'component.util'
+], function (provide, FieldOperation, Record, util) {
+    /**
+     * @class Операция над БД.
+     * @name cloud.dataSyncApi.Operation
+     * @param {Object} properties Параметры операции.
+     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
+     * <ul>
+     *     <li>insert — добавление записи;</li>
+     *     <li>delete — удаление записи;</li>
+     *     <li>set — перезадание записи;</li>
+     *     <li>update — изменение отдельных полей записи.</li>
+     * </ul>
+     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
+     * выполняется операция.
+     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
+     * операция.
+     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
+     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
+     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
+     */
+    var Operation = function (properties) {
+            this._type = properties.type;
+            this._collectionId = properties.collection_id;
+            this._recordId = properties.record_id;
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                this._fieldOperations = (properties.field_operations || []).map(function (change) {
+                    if (change instanceof FieldOperation) {
+                        return change;
+                    } else {
+                        return new FieldOperation(change);
+                    }
+                });
+            } else {
+                this._fieldOperations = null;
+            }
+        };
+
+    Operation.json = {
+        serialize: function (operation) {
+            var type = operation.getType(),
+                res = {
+                    record_id: operation.getRecordId(),
+                    collection_id: operation.getCollectionId(),
+                    change_type: type
+                };
+
+            if (['insert', 'update', 'set'].indexOf(type) != -1) {
+                res.changes = operation.getFieldOperations().map(function (change) {
+                    return FieldOperation.json.serialize(change);
+                });
+            }
+
+            return res;
+        },
+
+        deserialize: function (serialized) {
+            var type = serialized.change_type,
+                properties = {
+                    type: type,
+                    record_id: serialized.record_id,
+                    collection_id: serialized.collection_id
+                };
+
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                properties.field_changes = serialized.changes.map(function (change) {
+                    return FieldOperation.json.deserialize(change)
+                });
+            }
+
+            return new Operation(properties);
+        }
+    };
+
+    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
+        /**
+         * @returns {String} Тип операции.
+         */
+        getType: function () {
+            return this._type;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор записи.
+         */
+        getRecordId: function () {
+            return this._recordId;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор коллекции.
+         */
+        getCollectionId: function () {
+            return this._collectionId;
+        },
+
+        /**
+         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
+         * операций над полями записи.
+         */
+        getFieldOperations: function () {
+            return this._fieldOperations ? this._fieldOperations.slice() : null;
+        }
+    });
+
+    provide(Operation);
+});
 ns.modules.define('cloud.dataSyncApi.Record', [
     'cloud.Error',
     'component.util',
@@ -3615,7 +3781,7 @@ ns.modules.define('cloud.dataSyncApi.Record', [
 
         /**
          * @param {String} field_id Имя поля.
-         * @returns {cloud.dataSyncApi.Value} Значение поля.
+         * @returns {cloud.dataSyncApi.Value|undefined} Значение поля.
          */
         getFieldValue: function (field_id) {
             return this._fields[field_id];
@@ -3728,116 +3894,7 @@ ns.modules.define('cloud.dataSyncApi.Record', [
 
     provide(Record);
 });
-ns.modules.define('cloud.dataSyncApi.Operation', [
-    'cloud.dataSyncApi.FieldOperation',
-    'cloud.dataSyncApi.Record',
-    'component.util'
-], function (provide, FieldOperation, Record, util) {
-    /**
-     * @class Операция над БД.
-     * @name cloud.dataSyncApi.Operation
-     * @param {Object} properties Параметры операции.
-     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
-     * <ul>
-     *     <li>insert — добавление записи;</li>
-     *     <li>delete — удаление записи;</li>
-     *     <li>set — перезадание записи;</li>
-     *     <li>update — изменение отдельных полей записи.</li>
-     * </ul>
-     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
-     * выполняется операция.
-     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
-     * операция.
-     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
-     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
-     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
-     */
-    var Operation = function (properties) {
-            this._type = properties.type;
-            this._collectionId = properties.collection_id;
-            this._recordId = properties.record_id;
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                this._fieldOperations = (properties.field_operations || []).map(function (change) {
-                    if (change instanceof FieldOperation) {
-                        return change;
-                    } else {
-                        return new FieldOperation(change);
-                    }
-                });
-            } else {
-                this._fieldOperations = null;
-            }
-        };
 
-    Operation.json = {
-        serialize: function (operation) {
-            var type = operation.getType(),
-                res = {
-                    record_id: operation.getRecordId(),
-                    collection_id: operation.getCollectionId(),
-                    change_type: type
-                };
-
-            if (['insert', 'update', 'set'].indexOf(type) != -1) {
-                res.changes = operation.getFieldOperations().map(function (change) {
-                    return FieldOperation.json.serialize(change);
-                });
-            }
-
-            return res;
-        },
-
-        deserialize: function (serialized) {
-            var type = serialized.change_type,
-                properties = {
-                    type: type,
-                    record_id: serialized.record_id,
-                    collection_id: serialized.collection_id
-                };
-
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                properties.field_changes = serialized.changes.map(function (change) {
-                    return FieldOperation.json.deserialize(change)
-                });
-            }
-
-            return new Operation(properties);
-        }
-    };
-
-    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
-        /**
-         * @returns {String} Тип операции.
-         */
-        getType: function () {
-            return this._type;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор записи.
-         */
-        getRecordId: function () {
-            return this._recordId;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор коллекции.
-         */
-        getCollectionId: function () {
-            return this._collectionId;
-        },
-
-        /**
-         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
-         * операций над полями записи.
-         */
-        getFieldOperations: function () {
-            return this._fieldOperations ? this._fieldOperations.slice() : null;
-        }
-    });
-
-    provide(Operation);
-});
 ns.modules.define('cloud.dataSyncApi.Transaction', [
     'cloud.dataSyncApi.Record',
     'cloud.dataSyncApi.Operation',
@@ -4168,18 +4225,6 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
     provide(Transaction);
 });
 
-ns.modules.define('cloud.dataSyncApi.config', function (provide) {
-    provide({
-        apiHost: 'https://cloud-api.yandex.net/',
-        contexts: {
-            app: true,
-            user: true
-        },
-        oauthLoginPage: 'https://oauth.yandex.ru/authorize?response_type=token&client_id={{ key }}',
-        oauthWindowParameters: 'width=600,height=500',
-        deltaLimit: 100
-    });
-});
 ns.modules.define('cloud.dataSyncApi.Value', [
     'component.util',
     'cloud.Error'
@@ -4549,25 +4594,16 @@ ns.modules.define('cloud.dataSyncApi.Value', [
     provide(Value);
 });
 
-ns.modules.define('cloud.dataSyncApi.politics', [
-
-], function (provide) {
+ns.modules.define('cloud.dataSyncApi.config', function (provide) {
     provide({
-        theirs: function (operations, conflicts) {
-            var indexes = conflicts.reduce(function (indexes, conflict) {
-                    indexes[conflict.index] = true;
-                    return indexes;
-                }, {}),
-                result = [];
-
-            operations.forEach(function (operation, index) {
-                if (!indexes[index]) {
-                    result.push(operation);
-                }
-            });
-
-            return result;
-        }
+        apiHost: 'https://cloud-api.yandex.net/',
+        contexts: {
+            app: true,
+            user: true
+        },
+        oauthLoginPage: 'https://oauth.yandex.ru/authorize?response_type=token&client_id={{ key }}',
+        oauthWindowParameters: 'width=600,height=500',
+        deltaLimit: 100
     });
 });
 ns.modules.define('cloud.dataSyncApi.http', [
@@ -4755,6 +4791,27 @@ ns.modules.define('cloud.dataSyncApi.http', [
                     }
                 );
             });
+        }
+    });
+});
+ns.modules.define('cloud.dataSyncApi.politics', [
+
+], function (provide) {
+    provide({
+        theirs: function (operations, conflicts) {
+            var indexes = conflicts.reduce(function (indexes, conflict) {
+                    indexes[conflict.index] = true;
+                    return indexes;
+                }, {}),
+                result = [];
+
+            operations.forEach(function (operation, index) {
+                if (!indexes[index]) {
+                    result.push(operation);
+                }
+            });
+
+            return result;
         }
     });
 });
