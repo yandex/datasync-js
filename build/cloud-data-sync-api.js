@@ -1891,7 +1891,7 @@ Client.prototype.initialize = function (options) {
  * аутентифицирован, false в противном случае.
  * @static
  */
-Client.prototype.isInitiaized = function () {
+Client.prototype.isInitialized = function () {
     return this._initialized;
 };
 
@@ -4637,7 +4637,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
         authorizeIfNeeded = function (options) {
             if (options.token) {
                 return vow.resolve(options.token);
-            } else if (client.isInitiaized()) {
+            } else if (client.isInitialized()) {
                 return vow.resolve(client.getToken());
             } else {
                 if (options && (options.authorize_if_needed || typeof options.authorize_if_needed == 'undefined')) {
