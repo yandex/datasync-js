@@ -85,9 +85,12 @@ Client.prototype.initialize = function (options) {
  * аутентифицирован, false в противном случае.
  * @static
  */
-Client.prototype.isInitiaized = function () {
+Client.prototype.isInitialized = function () {
     return this._initialized;
 };
+
+// #12 — оставлено для обратной совместимости.
+Client.prototype.isInitiaized = Client.prototype.isInitialized
 
 /**
  * @name cloud.client.getToken
