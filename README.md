@@ -45,12 +45,14 @@ Example
     
 <a href="https://yandex.github.io/datasync-js/example/contactList.html">example/contactList.html</a>
 
-Buiding
+Building
 -------
 
   1. To build a project you need to have <a href="http://gulpjs.com/">gulp</a> installed on your system.
   2. Run `npm run debug` or `npm run release` to build debug or release version of the API respectively. Result will be placed into './build/' folder
   3. Run `npm run watch` to make gulp watching file changes and preforming debug build automatically
+
+You may get latest build from Yandex CDN: https://cloud-api.yandex.net/static/datasync-jsapi/v1/cloud-data-sync-api.js
 
 Testing
 -------
