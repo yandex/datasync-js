@@ -103,7 +103,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
         }
     };
 
-    util.defineClass(Value, {
+    util.defineClass(Value, /** @lends cloud.dataSyncApi.Value.prototype */ {
         /**
          * @returns {String} Тип значения.
          */
