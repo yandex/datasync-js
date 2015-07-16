@@ -1837,13 +1837,16 @@ Client.prototype.initialize = function (options) {
             deferred.reject(new Error({
                 message: '`options` Parameter Required'
             }));
-        } else if (!options.key && !options.token) {
+        } else if (!options.key && !options.token && !options.withCredentials) {
             deferred.reject(new Error({
                 message: 'Either `options.key` or `options.token` Parameter Required'
             }));
         } else {
             if (options.token) {
                 this._token = options.token;
+                deferred.resolve();
+            } else if (options.withCredentials) {
+                this._withCredentials = true;
                 deferred.resolve();
             } else {
                 var oauthWindow = global.open(
@@ -1908,6 +1911,10 @@ Client.prototype.isInitiaized = Client.prototype.isInitialized
 Client.prototype.getToken = function () {
     return this._token;
 };
+
+Client.prototype.withCredentials = function () {
+    return this._withCredentials;
+}
 
 ns.cloud.client = new Client();
 
@@ -2525,6 +2532,10 @@ ns.modules.define('component.xhr', [
         }
         if (!headers['X-Requested-With']) {
             headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
+
+        if (options.withCredentials) {
+            xhr.withCredentials = true;
         }
 
         xhr.onload = function () {
@@ -3576,6 +3587,116 @@ ns.modules.define('cloud.dataSyncApi.FieldOperation', [
 
     provide(FieldOperation);
 });
+ns.modules.define('cloud.dataSyncApi.Operation', [
+    'cloud.dataSyncApi.FieldOperation',
+    'cloud.dataSyncApi.Record',
+    'component.util'
+], function (provide, FieldOperation, Record, util) {
+    /**
+     * @class Операция над БД.
+     * @name cloud.dataSyncApi.Operation
+     * @param {Object} properties Параметры операции.
+     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
+     * <ul>
+     *     <li>insert — добавление записи;</li>
+     *     <li>delete — удаление записи;</li>
+     *     <li>set — перезадание записи;</li>
+     *     <li>update — изменение отдельных полей записи.</li>
+     * </ul>
+     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
+     * выполняется операция.
+     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
+     * операция.
+     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
+     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
+     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
+     */
+    var Operation = function (properties) {
+            this._type = properties.type;
+            this._collectionId = properties.collection_id;
+            this._recordId = properties.record_id;
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                this._fieldOperations = (properties.field_operations || []).map(function (change) {
+                    if (change instanceof FieldOperation) {
+                        return change;
+                    } else {
+                        return new FieldOperation(change);
+                    }
+                });
+            } else {
+                this._fieldOperations = null;
+            }
+        };
+
+    Operation.json = {
+        serialize: function (operation) {
+            var type = operation.getType(),
+                res = {
+                    record_id: operation.getRecordId(),
+                    collection_id: operation.getCollectionId(),
+                    change_type: type
+                };
+
+            if (['insert', 'update', 'set'].indexOf(type) != -1) {
+                res.changes = operation.getFieldOperations().map(function (change) {
+                    return FieldOperation.json.serialize(change);
+                });
+            }
+
+            return res;
+        },
+
+        deserialize: function (serialized) {
+            var type = serialized.change_type,
+                properties = {
+                    type: type,
+                    record_id: serialized.record_id,
+                    collection_id: serialized.collection_id
+                };
+
+            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
+                properties.field_changes = serialized.changes.map(function (change) {
+                    return FieldOperation.json.deserialize(change)
+                });
+            }
+
+            return new Operation(properties);
+        }
+    };
+
+    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
+        /**
+         * @returns {String} Тип операции.
+         */
+        getType: function () {
+            return this._type;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор записи.
+         */
+        getRecordId: function () {
+            return this._recordId;
+        },
+
+        /**
+         * @returns {String} Возвращает идентификатор коллекции.
+         */
+        getCollectionId: function () {
+            return this._collectionId;
+        },
+
+        /**
+         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
+         * операций над полями записи.
+         */
+        getFieldOperations: function () {
+            return this._fieldOperations ? this._fieldOperations.slice() : null;
+        }
+    });
+
+    provide(Operation);
+});
 ns.modules.define('cloud.dataSyncApi.Record', [
     'cloud.Error',
     'component.util',
@@ -3788,116 +3909,6 @@ ns.modules.define('cloud.dataSyncApi.Record', [
     provide(Record);
 });
 
-ns.modules.define('cloud.dataSyncApi.Operation', [
-    'cloud.dataSyncApi.FieldOperation',
-    'cloud.dataSyncApi.Record',
-    'component.util'
-], function (provide, FieldOperation, Record, util) {
-    /**
-     * @class Операция над БД.
-     * @name cloud.dataSyncApi.Operation
-     * @param {Object} properties Параметры операции.
-     * @param {String} properties.type <p>Тип операции. Возможны следующие значения:</p>
-     * <ul>
-     *     <li>insert — добавление записи;</li>
-     *     <li>delete — удаление записи;</li>
-     *     <li>set — перезадание записи;</li>
-     *     <li>update — изменение отдельных полей записи.</li>
-     * </ul>
-     * @param {String} properties.collection_id Идентфикатор коллекции, над которой
-     * выполняется операция.
-     * @param {String} properties.record_id Идентификатор записи, над которой выполняется
-     * операция.
-     * @param {cloud.dataSyncApi.FieldOperation[]|Object[]} [properties.field_operations = []] Для операций
-     * insert, set и update задаёт изменения значений полей. Может задаваться массивом
-     * экземпляров класса {@link cloud.dataSyncApi.FieldOperation} либо json-объектов, приводимых к нему.
-     */
-    var Operation = function (properties) {
-            this._type = properties.type;
-            this._collectionId = properties.collection_id;
-            this._recordId = properties.record_id;
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                this._fieldOperations = (properties.field_operations || []).map(function (change) {
-                    if (change instanceof FieldOperation) {
-                        return change;
-                    } else {
-                        return new FieldOperation(change);
-                    }
-                });
-            } else {
-                this._fieldOperations = null;
-            }
-        };
-
-    Operation.json = {
-        serialize: function (operation) {
-            var type = operation.getType(),
-                res = {
-                    record_id: operation.getRecordId(),
-                    collection_id: operation.getCollectionId(),
-                    change_type: type
-                };
-
-            if (['insert', 'update', 'set'].indexOf(type) != -1) {
-                res.changes = operation.getFieldOperations().map(function (change) {
-                    return FieldOperation.json.serialize(change);
-                });
-            }
-
-            return res;
-        },
-
-        deserialize: function (serialized) {
-            var type = serialized.change_type,
-                properties = {
-                    type: type,
-                    record_id: serialized.record_id,
-                    collection_id: serialized.collection_id
-                };
-
-            if (['insert', 'update', 'set'].indexOf(this._type) != -1) {
-                properties.field_changes = serialized.changes.map(function (change) {
-                    return FieldOperation.json.deserialize(change)
-                });
-            }
-
-            return new Operation(properties);
-        }
-    };
-
-    util.defineClass(Operation, /** @lends cloud.dataSyncApi.Operation.prototype */ {
-        /**
-         * @returns {String} Тип операции.
-         */
-        getType: function () {
-            return this._type;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор записи.
-         */
-        getRecordId: function () {
-            return this._recordId;
-        },
-
-        /**
-         * @returns {String} Возвращает идентификатор коллекции.
-         */
-        getCollectionId: function () {
-            return this._collectionId;
-        },
-
-        /**
-         * @returns {cloud.dataSyncApi.FieldOperation[]} Возвращает список
-         * операций над полями записи.
-         */
-        getFieldOperations: function () {
-            return this._fieldOperations ? this._fieldOperations.slice() : null;
-        }
-    });
-
-    provide(Operation);
-});
 ns.modules.define('cloud.dataSyncApi.Transaction', [
     'cloud.dataSyncApi.Record',
     'cloud.dataSyncApi.Operation',
@@ -4333,7 +4344,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
         }
     };
 
-    util.defineClass(Value, {
+    util.defineClass(Value, /** @lends cloud.dataSyncApi.Value.prototype */ {
         /**
          * @returns {String} Тип значения.
          */
@@ -4613,9 +4624,10 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'cloud.dataSyncApi.config',
     'cloud.client',
     'component.xhr',
+    'component.util',
     'vow',
     'cloud.Error'
-], function (provide, config, client, xhr, vow, Error) {
+], function (provide, config, client, xhr, util, vow, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -4637,14 +4649,34 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 message: message
             }));
         },
-        authorizeIfNeeded = function (options) {
+        addAuthorization = function (options, rawParams) {
+            var params = util.extend({}, rawParams);
+            if (!params.headers) {
+                params.headers = {};
+            } else {
+                params.headers = util.extend({}, params.headers);
+            }
+
             if (options.token) {
-                return vow.resolve(options.token);
+                params.headers.Authorization = 'OAuth ' + token;
+                return vow.resolve(params);
             } else if (client.isInitiaized()) {
-                return vow.resolve(client.getToken());
+                if (client.withCredentials()) {
+                    params.withCredentials = true;
+                } else {
+                    params.headers.Authorization = 'OAuth ' + client.getToken();
+                }
+                return vow.resolve(params);
             } else {
                 if (options && (options.authorize_if_needed || typeof options.authorize_if_needed == 'undefined')) {
-                    return client.initialize(options);
+                    return client.initialize(options).then(function () {
+                        if (client.withCredentials()) {
+                            params.withCredentials = true;
+                        } else {
+                            params.headers.Authorization = 'OAuth ' + client.getToken();
+                        }
+                        return params;
+                    })
                 } else {
                     return vow.reject(new Error({
                         code: 401
@@ -4667,14 +4699,11 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 };
             }
 
-            return check(options) || authorizeIfNeeded(options).then(function (token) {
-                return xhr(url, {
-                    queryParams: queryParams,
-                    headers: {
-                        Authorization: 'OAuth ' + token
-                    },
-                    parse: true
-                });
+            return check(options) || addAuthorization(options, {
+                queryParams: queryParams,
+                parse: true
+            }).then(function (params) {
+                return xhr(url, params);
             });
         },
 
@@ -4684,16 +4713,14 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.database_id` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'PUT',
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' + encodeURIComponent(options.database_id), {
-                        method: 'PUT',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                    params
                 );
             });
         },
@@ -4704,32 +4731,28 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.database_id` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'DELETE',
+                // NB: DELETE database отдаёт пустой ответ при успехе
+                parse: false
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' + encodeURIComponent(options.database_id), {
-                        method: 'DELETE',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        // NB: DELETE database отдаёт пустой ответ при успехе
-                        parse: false
-                    }
+                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                    params
                 );
             });
         },
 
         getSnapshot: function (options) {
-            return check(options) || authorizeIfNeeded(options).then(function (token) {
+            return check(options) || addAuthorization(options, {
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/snapshot', {
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/snapshot',
+                    params
                 );
             });
         },
@@ -4745,21 +4768,19 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.base_revision` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'GET',
+                queryParams: {
+                    base_revision: options.base_revision,
+                    limit: typeof options.limit == 'undefined' ? 100 : options.limit
+                },
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/deltas', {
-                        method: 'GET',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        queryParams: {
-                            base_revision: options.base_revision,
-                            limit: typeof options.limit == 'undefined' ? 100 : options.limit
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/deltas',
+                    params
                 );
             });
         },
@@ -4779,19 +4800,19 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.data` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'POST',
+                headers: {
+                    'If-Match': options.base_revision
+                },
+                parse: true,
+                data: options.data
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/deltas', {
-                        method: 'POST',
-                        headers: {
-                            Authorization: 'OAuth ' + token,
-                            'If-Match': options.base_revision
-                        },
-                        parse: true,
-                        data: options.data
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/deltas',
+                    params
                 );
             });
         }

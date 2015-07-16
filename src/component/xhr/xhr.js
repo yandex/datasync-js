@@ -55,6 +55,10 @@ ns.modules.define('component.xhr', [
             headers['X-Requested-With'] = 'XMLHttpRequest';
         }
 
+        if (options.withCredentials) {
+            xhr.withCredentials = true;
+        }
+
         xhr.onload = function () {
             var result = {
                     code: this.status,

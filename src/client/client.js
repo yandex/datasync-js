@@ -31,13 +31,16 @@ Client.prototype.initialize = function (options) {
             deferred.reject(new Error({
                 message: '`options` Parameter Required'
             }));
-        } else if (!options.key && !options.token) {
+        } else if (!options.key && !options.token && !options.withCredentials) {
             deferred.reject(new Error({
                 message: 'Either `options.key` or `options.token` Parameter Required'
             }));
         } else {
             if (options.token) {
                 this._token = options.token;
+                deferred.resolve();
+            } else if (options.withCredentials) {
+                this._withCredentials = true;
                 deferred.resolve();
             } else {
                 var oauthWindow = global.open(
@@ -102,6 +105,10 @@ Client.prototype.isInitiaized = Client.prototype.isInitialized
 Client.prototype.getToken = function () {
     return this._token;
 };
+
+Client.prototype.withCredentials = function () {
+    return this._withCredentials;
+}
 
 ns.cloud.client = new Client();
 

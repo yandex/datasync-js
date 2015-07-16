@@ -2,9 +2,10 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'cloud.dataSyncApi.config',
     'cloud.client',
     'component.xhr',
+    'component.util',
     'vow',
     'cloud.Error'
-], function (provide, config, client, xhr, vow, Error) {
+], function (provide, config, client, xhr, util, vow, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -26,14 +27,34 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 message: message
             }));
         },
-        authorizeIfNeeded = function (options) {
+        addAuthorization = function (options, rawParams) {
+            var params = util.extend({}, rawParams);
+            if (!params.headers) {
+                params.headers = {};
+            } else {
+                params.headers = util.extend({}, params.headers);
+            }
+
             if (options.token) {
-                return vow.resolve(options.token);
+                params.headers.Authorization = 'OAuth ' + token;
+                return vow.resolve(params);
             } else if (client.isInitiaized()) {
-                return vow.resolve(client.getToken());
+                if (client.withCredentials()) {
+                    params.withCredentials = true;
+                } else {
+                    params.headers.Authorization = 'OAuth ' + client.getToken();
+                }
+                return vow.resolve(params);
             } else {
                 if (options && (options.authorize_if_needed || typeof options.authorize_if_needed == 'undefined')) {
-                    return client.initialize(options);
+                    return client.initialize(options).then(function () {
+                        if (client.withCredentials()) {
+                            params.withCredentials = true;
+                        } else {
+                            params.headers.Authorization = 'OAuth ' + client.getToken();
+                        }
+                        return params;
+                    })
                 } else {
                     return vow.reject(new Error({
                         code: 401
@@ -56,14 +77,11 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 };
             }
 
-            return check(options) || authorizeIfNeeded(options).then(function (token) {
-                return xhr(url, {
-                    queryParams: queryParams,
-                    headers: {
-                        Authorization: 'OAuth ' + token
-                    },
-                    parse: true
-                });
+            return check(options) || addAuthorization(options, {
+                queryParams: queryParams,
+                parse: true
+            }).then(function (params) {
+                return xhr(url, params);
             });
         },
 
@@ -73,16 +91,14 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.database_id` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'PUT',
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' + encodeURIComponent(options.database_id), {
-                        method: 'PUT',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                    params
                 );
             });
         },
@@ -93,32 +109,28 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.database_id` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'DELETE',
+                // NB: DELETE database отдаёт пустой ответ при успехе
+                parse: false
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' + encodeURIComponent(options.database_id), {
-                        method: 'DELETE',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        // NB: DELETE database отдаёт пустой ответ при успехе
-                        parse: false
-                    }
+                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                    params
                 );
             });
         },
 
         getSnapshot: function (options) {
-            return check(options) || authorizeIfNeeded(options).then(function (token) {
+            return check(options) || addAuthorization(options, {
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/snapshot', {
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/snapshot',
+                    params
                 );
             });
         },
@@ -134,21 +146,19 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.base_revision` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'GET',
+                queryParams: {
+                    base_revision: options.base_revision,
+                    limit: typeof options.limit == 'undefined' ? 100 : options.limit
+                },
+                parse: true
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/deltas', {
-                        method: 'GET',
-                        headers: {
-                            Authorization: 'OAuth ' + token
-                        },
-                        queryParams: {
-                            base_revision: options.base_revision,
-                            limit: typeof options.limit == 'undefined' ? 100 : options.limit
-                        },
-                        parse: true
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/deltas',
+                    params
                 );
             });
         },
@@ -168,19 +178,19 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 error = fail('`options.data` Parameter Required');
             }
 
-            return error || authorizeIfNeeded(options).then(function (token) {
+            return error || addAuthorization(options, {
+                method: 'POST',
+                headers: {
+                    'If-Match': options.base_revision
+                },
+                parse: true,
+                data: options.data
+            }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                    options.context + '/databases/' +
-                    encodeURIComponent(options.database_id) + '/deltas', {
-                        method: 'POST',
-                        headers: {
-                            Authorization: 'OAuth ' + token,
-                            'If-Match': options.base_revision
-                        },
-                        parse: true,
-                        data: options.data
-                    }
+                        options.context + '/databases/' +
+                        encodeURIComponent(options.database_id) + '/deltas',
+                    params
                 );
             });
         }
