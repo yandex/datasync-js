@@ -31,7 +31,7 @@ Client.prototype.initialize = function (options) {
             deferred.reject(new Error({
                 message: '`options` Parameter Required'
             }));
-        } else if (!options.key && !options.token && !options.withCredentials) {
+        } else if (!options.key && !options.token && !options.with_credentials) {
             deferred.reject(new Error({
                 message: 'Either `options.key` or `options.token` Parameter Required'
             }));
@@ -39,7 +39,7 @@ Client.prototype.initialize = function (options) {
             if (options.token) {
                 this._token = options.token;
                 deferred.resolve();
-            } else if (options.withCredentials) {
+            } else if (options.with_credentials) {
                 this._withCredentials = true;
                 deferred.resolve();
             } else {
