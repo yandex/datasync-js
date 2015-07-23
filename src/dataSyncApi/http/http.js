@@ -97,7 +97,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                        options.context + '/databases/' + options.database_id,
                     params
                 );
             });
@@ -116,7 +116,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
-                        options.context + '/databases/' + encodeURIComponent(options.database_id),
+                        options.context + '/databases/' + options.database_id,
                     params
                 );
             });
@@ -129,7 +129,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 return xhr(
                     config.apiHost + 'v1/data/' +
                         options.context + '/databases/' +
-                        encodeURIComponent(options.database_id) + '/snapshot',
+                        options.database_id + '/snapshot',
                     params
                 );
             });
@@ -157,7 +157,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 return xhr(
                     config.apiHost + 'v1/data/' +
                         options.context + '/databases/' +
-                        encodeURIComponent(options.database_id) + '/deltas',
+                        options.database_id + '/deltas',
                     params
                 );
             });
@@ -189,7 +189,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 return xhr(
                     config.apiHost + 'v1/data/' +
                         options.context + '/databases/' +
-                        encodeURIComponent(options.database_id) + '/deltas',
+                        options.database_id + '/deltas',
                     params
                 );
             });

@@ -28,7 +28,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
     function rawCreateDatabase (done, dontPurge) {
         var xhr = new XMLHttpRequest();
         xhr.open('PUT', config.apiHost + 'v1/data/' +
-        context + '/databases/' + encodeURIComponent(name), true);
+            context + '/databases/' + name, true);
         if (token) {
             xhr.setRequestHeader('Authorization', 'OAuth ' + token);
         } else {
@@ -52,7 +52,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
     function rawDeleteDatabase (done) {
         var xhr = new XMLHttpRequest();
         xhr.open('DELETE', config.apiHost + 'v1/data/' +
-        context + '/databases/' + encodeURIComponent(name), true);
+            context + '/databases/' + name, true);
         if (token) {
             xhr.setRequestHeader('Authorization', 'OAuth ' + token);
         } else {
@@ -79,7 +79,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     context: context,
                     database_id: name,
                     token: token,
-                    withCredentials: token ? false : true
+                    with_credentials: token ? false : true
                 }).then(function (res) {
                     expect(res.code).to.be(200);
                     deleteDatabase();
@@ -91,7 +91,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     context: context,
                     database_id: name,
                     token: token,
-                    withCredentials: token ? false : true
+                    with_credentials: token ? false : true
                 }).then(function (res) {
                     expect(res.code).to.be(204);
                     checkDatabase();
@@ -103,7 +103,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     context: context,
                     database_id: name,
                     token: token,
-                    withCredentials: token ? false : true
+                    with_credentials: token ? false : true
                 }).then(function (res) {
                     expect(res.code).to.be(404);
                     putDatabase();
@@ -115,7 +115,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     context: context,
                     database_id: name,
                     token: token,
-                    withCredentials: token ? false : true
+                    with_credentials: token ? false : true
                 }).then(function (res) {
                     expect(res.code).to.be(201);
                     rawDeleteDatabase(done)
@@ -138,7 +138,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     token: token,
                     context: context,
                     database_id: name,
-                    withCredentials: token ? false : true
+                    with_credentials: token ? false : true
                 }).then(function (res) {
                     revisions.push(res.data.revision);
                     postDeltas();
@@ -151,7 +151,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                     context: context,
                     database_id: name,
                     base_revision: revisions[0],
-                    withCredentials: token ? false : true,
+                    with_credentials: token ? false : true,
                     data: {
                         delta_id: 'id1',
                         changes: [{
@@ -187,7 +187,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                         context: context,
                         database_id: name,
                         token: token,
-                        withCredentials: token ? false : true
+                        with_credentials: token ? false : true
                     }).then(function (res) {
                         expect(res.data.records_count).to.be(1);
                         expect(res.data.revision).to.be(revisions[1]);
@@ -201,7 +201,7 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
                         token: token,
                         database_id: name,
                         base_revision: revisions[0],
-                        withCredentials: token ? false : true
+                        with_credentials: token ? false : true
                     }).then(function (res) {
                         expect(res.data.revision).to.be.equal(revisions[1]);
                         rawDeleteDatabase(done);
