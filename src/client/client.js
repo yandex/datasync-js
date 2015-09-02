@@ -38,9 +38,11 @@ Client.prototype.initialize = function (options) {
         } else {
             if (options.token) {
                 this._token = options.token;
+                this._initialized = true;
                 deferred.resolve();
             } else if (options.with_credentials) {
                 this._withCredentials = true;
+                this._initialized = true;
                 deferred.resolve();
             } else {
                 var oauthWindow = global.open(

@@ -1755,55 +1755,6 @@ defineAsGlobal && (global.vow = vow);
 
 ns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);
 
-ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
-    var messages = {
-            400: 'Bad Request',
-            401: 'Not Authorized',
-            403: 'Forbidden',
-            404: 'Not Found',
-            409: 'Conflict',
-            410: 'Gone',
-            421: 'Locked',
-            423: 'Too Many Requests',
-            500: 'Internal Server Error'
-        };
-        /**
-         * @class Ошибка API Диска.
-         * @augments Error
-         * @param {Object} [parameters] Описание ошибки в виде JSON-объекта.
-         * Все поля JSON-объекта будут скопированы в созданный экземпляр
-         * ошибки.
-         * @param {Integer} [parameters.code = 400] HTTP-код ошибки.
-         * @param {String} [parameters.message] Сообщение об ошибке.
-         * Если не передано, заполнится автоматически для стандартных
-         * HTTP-ошибок.
-         */
-    var CloudError = function (parameters) {
-            util.extend(this, {
-                code: 400
-            }, parameters);
-
-            if (!this.message) {
-                this.message = messages[this.code];
-            }
-
-            // http://stackoverflow.com/questions/1382107/whats-a-good-way-to-extend-error-in-javascript
-            if (Error.captureStackTrace) {
-                Error.captureStackTrace(this, CloudError);
-            } else {
-                this.stack = (new Error()).stack;
-            }
-        };
-
-    util.defineClass(CloudError, Error, {
-        toString: function () {
-            return this.code + ' ' + this.message;
-        }
-    });
-
-    provide(CloudError);
-});
-
 var Client = function () {
     this._initialized = false;
     this._key = null;
@@ -1844,9 +1795,11 @@ Client.prototype.initialize = function (options) {
         } else {
             if (options.token) {
                 this._token = options.token;
+                this._initialized = true;
                 deferred.resolve();
             } else if (options.with_credentials) {
                 this._withCredentials = true;
+                this._initialized = true;
                 deferred.resolve();
             } else {
                 var oauthWindow = global.open(
@@ -1925,6 +1878,55 @@ ns.modules.define('cloud.client', [], function (provide) {
      * @static
      */
     provide(ns.cloud.client);
+});
+
+ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
+    var messages = {
+            400: 'Bad Request',
+            401: 'Not Authorized',
+            403: 'Forbidden',
+            404: 'Not Found',
+            409: 'Conflict',
+            410: 'Gone',
+            421: 'Locked',
+            423: 'Too Many Requests',
+            500: 'Internal Server Error'
+        };
+        /**
+         * @class Ошибка API Диска.
+         * @augments Error
+         * @param {Object} [parameters] Описание ошибки в виде JSON-объекта.
+         * Все поля JSON-объекта будут скопированы в созданный экземпляр
+         * ошибки.
+         * @param {Integer} [parameters.code = 400] HTTP-код ошибки.
+         * @param {String} [parameters.message] Сообщение об ошибке.
+         * Если не передано, заполнится автоматически для стандартных
+         * HTTP-ошибок.
+         */
+    var CloudError = function (parameters) {
+            util.extend(this, {
+                code: 400
+            }, parameters);
+
+            if (!this.message) {
+                this.message = messages[this.code];
+            }
+
+            // http://stackoverflow.com/questions/1382107/whats-a-good-way-to-extend-error-in-javascript
+            if (Error.captureStackTrace) {
+                Error.captureStackTrace(this, CloudError);
+            } else {
+                this.stack = (new Error()).stack;
+            }
+        };
+
+    util.defineClass(CloudError, Error, {
+        toString: function () {
+            return this.code + ' ' + this.message;
+        }
+    });
+
+    provide(CloudError);
 });
 
 /**
@@ -2329,265 +2331,6 @@ ns.modules.define('cloud.dataSyncApi', [], function (provide) {
     provide(ns.cloud.dataSyncApi);
 });
 
-ns.modules.define('component.util', function (provide) {
-    var util = {
-            /**
-             * @ignore
-             * Базовая функция, реализующая наследование в JavaScript.
-             * Реализует наследование прототипа без исполнения конструктора родителя.
-             *
-             * К дочернему классу добавляется поле 'superclass', указывающее на
-             * прототип родительского класса, и поле 'constructor', которое указывает на конструктор класса.
-             * Через поле 'constructor' объекта 'superclass' можно обратится к конструктору родительского класса.
-             * @name component.util.augment
-             * @function
-             * @static
-             * @param {Function} ChildClass Дочерний класс.
-             * @param {Function} ParentClass Родительский класс.
-             * @param {Object} override Набор дополнительных полей и функций,
-             * которые будут приписаны к прототипу дочернего класса.
-             * @returns {Object} Прототип дочернего класса.
-             * @example
-             *
-             * // Родительский класс
-             * var ParentClass = function (param1, param2) {
-             *     this.param1 = param1;
-             *     this.param2 = param2;
-             * };
-             *
-             * ParentClass.prototype = {
-             *     foo: function () {
-             *         alert('Parent!');
-             *     }
-             * };
-             * // Дочерний класс
-             * var ChildClass = function (param1, param2, param3) {
-             *     // Вызываем конструктор родителя
-             *     ChildClass.superclass.constructor.call(this, param1, param2);
-             *     this._param3 = param3;
-             * }
-             *
-             * // наследуем ChildClass от ParentClass
-             * augment(ChildClass, ParentClass, {
-             *     // переопределяем в наследнике метод foo
-             *     foo: function () {
-             *         // Вызываем метод родительского класса
-             *         ChildClass.superclass.foo.call(this);
-             *         alert('Child!');
-             *     }
-             * });
-             */
-            augment: function (ChildClass, ParentClass, override) {
-                ChildClass.prototype = (Object.create || function (obj) {
-                    function F () {
-                    }
-
-                    F.prototype = obj;
-                    return new F();
-                })(ParentClass.prototype);
-
-                ChildClass.prototype.constructor = ChildClass;
-                ChildClass.superclass = ParentClass.prototype;
-                ChildClass.superclass.constructor = ParentClass;
-
-                if (override) {
-                    util.extend(ChildClass.prototype, override);
-                }
-                return ChildClass.prototype;
-            },
-            /**
-             * @ignore
-             * Функция, копирующая свойства из одного или нескольких
-             * JavaScript-объектов в другой JavaScript-объект.
-             * @param {Object} target Целевой JavaScript-объект. Будет модифицирован
-             * в результате работы функции.
-             * @param {Object} source JavaScript-объект - источник. Все его свойства
-             * будут скопированы. Источников может быть несколько (функция может иметь
-             * произвольное число параметров), данные копируются справа налево (последний
-             * аргумент имеет наивысший приоритет при копировании).
-             * @name component.util.extend
-             * @function
-             * @static
-             *
-             * @example
-             * var options = extend({
-             *      prop1: 'a',
-             *      prop2: 'b'
-             * }, {
-             *      prop2: 'c',
-             *      prop3: 'd'
-             * }, {
-             *      prop3: 'e'
-             * });
-             * // Получим в итоге: {
-             * //     prop1: 'a',
-             * //     prop2: 'c',
-             * //     prop3: 'e'
-             * // }
-             */
-            extend: function (target) {
-                for (var i = 1, l = arguments.length; i < l; i++) {
-                    var arg = arguments[i];
-                    if (arg) {
-                        var keys = Object.keys(arg);
-                        for (var j = 0, k = keys.length; j < k; j++) {
-                            target[keys[j]] = arg[keys[j]];
-                        }
-                    }
-                }
-                return target;
-            },
-            /**
-             * @ignore
-             * <p>Базовая функция, реализующая объявление классов.
-             * При помощи этой функции можно объявить новый класс, указать у этого класса набор методов и
-             * произвести наследование от другого класса.</p>
-             * <p>К дочернему классу приписывается поле superclass, указывающее на
-             * прототип родительского класса.
-             * Через поле 'constructor' объекта 'superclass' можно обратится
-             * к конструктору родительского класса.</p>
-             * @name component.util.defineClass
-             * @function
-             * @static
-             * @param {Function} constructor Конструктор класса.
-             * @param {Function} [parentClass] Родительский класс,
-             * от которого необходимо произвести наследование. Этот аргумент может быть пропущен.
-             * @param {Object} [override] Набор дополнительных полей и функций,
-             * которые будут приписаны к прототипу класса. Источников может быть несколько (функция может иметь
-             * произвольное число параметров), данные копируются справа налево (последний
-             * аргумент имеет наивысший приоритет при копировании).
-             * @returns {Function} Класс.
-             */
-            defineClass: function (constructor) {
-                var argIndex = 1,
-                    baseConstructor = typeof arguments[argIndex] == "function" ? arguments[argIndex++] : null;
-
-                if (baseConstructor) {
-                    util.augment(constructor, baseConstructor);
-                }
-
-                var argLength = arguments.length;
-                while (argIndex < argLength) {
-                    util.extend(constructor.prototype, arguments[argIndex++]);
-                }
-
-                return constructor;
-            }
-        };
-
-    provide(util);
-});
-ns.modules.define('component.xhr', [
-    'global',
-    'vow',
-    'cloud.Error',
-    'cloud.dataSyncApi.config'
-], function (provide, global, vow, Error, config) {
-    var XMLHttpRequest = global.XDomainRequest || global.XMLHttpRequest,
-        parseHeaders = function (headers) {
-            return headers.split('\u000d\u000a').reduce(function (result, line) {
-                var parts = line.split('\u003a\u0020');
-                if (parts.length == 2) {
-                    result[parts[0].toLowerCase()] = parts[1].trim();
-                }
-                return result;
-            }, {});
-        };
-    /**
-     * @ignore
-     * Шлёт запрос посредством кросс-доменного XMLHttpRequest.
-     * @name component.util.xhr
-     * @function
-     * @statuc
-     * @param {String} baseUrl Базовый URL
-     * @param {Object} [options] Опции.
-     * @param {String} [options.method = 'GET'] HTTP-метод.
-     * @param {Object} [options.queryParams] Дополнительные query-параметры.
-     * @param {Object} [options.data] Данные.
-     * @param {Object} [options.headers] Дополнительные заголовки.
-     * @param {Boolean} [options.parse = false] true — автоматически
-     * применить JSON.parse к ответу сервера, false - не применять.
-     * @param {Boolean} [options.parseResponseHeaders = true] true —
-     * автоматически разобрать заголовки ответа и сформировать JSON-объект,
-     * false — оставить строкой.
-     * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
-     * полученными данными, либо отклонён с ошибкой.
-     */
-    provide(function (baseUrl, options) {
-        options = options || {};
-        if (options.queryParams) {
-            baseUrl += (baseUrl.indexOf('?') == -1 ? '?' : '&') +
-                Object.keys(options.queryParams).map(function (key) {
-                    return key + '=' + global.encodeURIComponent(options.queryParams[key]);
-                }).join('&');
-        }
-
-        var deferred = vow.defer(),
-            xhr = new XMLHttpRequest(),
-            headers = options.headers || {},
-            method = options.method || 'GET';
-
-        if (method != 'GET' && !headers['Content-Type']) {
-            headers['Content-Type'] = 'application/json';
-        }
-        if (!headers['X-Requested-With']) {
-            headers['X-Requested-With'] = 'XMLHttpRequest';
-        }
-
-        if (options.withCredentials) {
-            xhr.withCredentials = true;
-        }
-
-        xhr.onload = function () {
-            var result = {
-                    code: this.status,
-                    data: this.responseText,
-                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
-                        this.getAllResponseHeaders() :
-                        parseHeaders(this.getAllResponseHeaders())
-                };
-
-            if (options.parse) {
-                try {
-                    result.data = JSON.parse(result.data);
-                } catch (e) {
-                    deferred.reject(new Error({
-                        message: 'JSON Parse Error ' + result.data
-                    }));
-                }
-            }
-            deferred.resolve(result);
-        };
-
-        xhr.onerror = function () {
-            deferred.reject(new Error({
-                code: 500
-            }));
-        };
-
-        xhr.open(method, baseUrl, true);
-        Object.keys(headers).forEach(function (key) {
-            xhr.setRequestHeader(key, headers[key]);
-        });
-        xhr.send(typeof options.data != 'undefined' ?
-            (typeof options.data == 'string' ?
-                options.data :
-                JSON.stringify(options.data)) :
-            undefined);
-
-        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
-            if (e instanceof vow.TimedOutError) {
-                throw new Error({
-                    code: 500,
-                    message: 'Timeout Exceeded'
-                });
-            } else {
-                throw e;
-            }
-        });
-    });
-});
 ns.modules.define('cloud.dataSyncApi.Conflict', [
     'component.util'
 ], function (provide, util) {
@@ -4840,48 +4583,265 @@ ns.modules.define('cloud.dataSyncApi.politics', [
         }
     });
 });
-ns.modules.define('cloud.dataSyncApi.validator', [
-    'cloud.dataSyncApi.Error'
-], function (provide) {
-    var fail = function (message) {
-            return vow.reject(new Error({
-                code: 400,
-                message: message
-            }));
-        },
-        validator = {
-            checkIdentifier: function (id) {
-                if (id.length < 1 || id.length > 128 ||
-                    !id.match(/^[]$/)) {
-                    return fail('Invalid Id');
-                }
-
-                return null;
-
-            },
-            checkDatabaseId: function (databaseId) {
-                if (typeof databaseId != 'string') {
-                    return fail('Invalid Database Id');
-                }
-
-                if (databaseId.indexOf('@') != 0) {
-                    var parts = databaseId.split('@');
-                    if (parts.length != 2) {
-                        return fail('Invalid Database Id');
-                    } else {
-                        return validator.checkIdentifier(parts[0]) || validator.checkIdentifier(parts[1]);
+ns.modules.define('component.util', function (provide) {
+    var util = {
+            /**
+             * @ignore
+             * Базовая функция, реализующая наследование в JavaScript.
+             * Реализует наследование прототипа без исполнения конструктора родителя.
+             *
+             * К дочернему классу добавляется поле 'superclass', указывающее на
+             * прототип родительского класса, и поле 'constructor', которое указывает на конструктор класса.
+             * Через поле 'constructor' объекта 'superclass' можно обратится к конструктору родительского класса.
+             * @name component.util.augment
+             * @function
+             * @static
+             * @param {Function} ChildClass Дочерний класс.
+             * @param {Function} ParentClass Родительский класс.
+             * @param {Object} override Набор дополнительных полей и функций,
+             * которые будут приписаны к прототипу дочернего класса.
+             * @returns {Object} Прототип дочернего класса.
+             * @example
+             *
+             * // Родительский класс
+             * var ParentClass = function (param1, param2) {
+             *     this.param1 = param1;
+             *     this.param2 = param2;
+             * };
+             *
+             * ParentClass.prototype = {
+             *     foo: function () {
+             *         alert('Parent!');
+             *     }
+             * };
+             * // Дочерний класс
+             * var ChildClass = function (param1, param2, param3) {
+             *     // Вызываем конструктор родителя
+             *     ChildClass.superclass.constructor.call(this, param1, param2);
+             *     this._param3 = param3;
+             * }
+             *
+             * // наследуем ChildClass от ParentClass
+             * augment(ChildClass, ParentClass, {
+             *     // переопределяем в наследнике метод foo
+             *     foo: function () {
+             *         // Вызываем метод родительского класса
+             *         ChildClass.superclass.foo.call(this);
+             *         alert('Child!');
+             *     }
+             * });
+             */
+            augment: function (ChildClass, ParentClass, override) {
+                ChildClass.prototype = (Object.create || function (obj) {
+                    function F () {
                     }
-                } else {
-                    return validator.checkIdentifier(databaseId);
+
+                    F.prototype = obj;
+                    return new F();
+                })(ParentClass.prototype);
+
+                ChildClass.prototype.constructor = ChildClass;
+                ChildClass.superclass = ParentClass.prototype;
+                ChildClass.superclass.constructor = ParentClass;
+
+                if (override) {
+                    util.extend(ChildClass.prototype, override);
+                }
+                return ChildClass.prototype;
+            },
+            /**
+             * @ignore
+             * Функция, копирующая свойства из одного или нескольких
+             * JavaScript-объектов в другой JavaScript-объект.
+             * @param {Object} target Целевой JavaScript-объект. Будет модифицирован
+             * в результате работы функции.
+             * @param {Object} source JavaScript-объект - источник. Все его свойства
+             * будут скопированы. Источников может быть несколько (функция может иметь
+             * произвольное число параметров), данные копируются справа налево (последний
+             * аргумент имеет наивысший приоритет при копировании).
+             * @name component.util.extend
+             * @function
+             * @static
+             *
+             * @example
+             * var options = extend({
+             *      prop1: 'a',
+             *      prop2: 'b'
+             * }, {
+             *      prop2: 'c',
+             *      prop3: 'd'
+             * }, {
+             *      prop3: 'e'
+             * });
+             * // Получим в итоге: {
+             * //     prop1: 'a',
+             * //     prop2: 'c',
+             * //     prop3: 'e'
+             * // }
+             */
+            extend: function (target) {
+                for (var i = 1, l = arguments.length; i < l; i++) {
+                    var arg = arguments[i];
+                    if (arg) {
+                        var keys = Object.keys(arg);
+                        for (var j = 0, k = keys.length; j < k; j++) {
+                            target[keys[j]] = arg[keys[j]];
+                        }
+                    }
+                }
+                return target;
+            },
+            /**
+             * @ignore
+             * <p>Базовая функция, реализующая объявление классов.
+             * При помощи этой функции можно объявить новый класс, указать у этого класса набор методов и
+             * произвести наследование от другого класса.</p>
+             * <p>К дочернему классу приписывается поле superclass, указывающее на
+             * прототип родительского класса.
+             * Через поле 'constructor' объекта 'superclass' можно обратится
+             * к конструктору родительского класса.</p>
+             * @name component.util.defineClass
+             * @function
+             * @static
+             * @param {Function} constructor Конструктор класса.
+             * @param {Function} [parentClass] Родительский класс,
+             * от которого необходимо произвести наследование. Этот аргумент может быть пропущен.
+             * @param {Object} [override] Набор дополнительных полей и функций,
+             * которые будут приписаны к прототипу класса. Источников может быть несколько (функция может иметь
+             * произвольное число параметров), данные копируются справа налево (последний
+             * аргумент имеет наивысший приоритет при копировании).
+             * @returns {Function} Класс.
+             */
+            defineClass: function (constructor) {
+                var argIndex = 1,
+                    baseConstructor = typeof arguments[argIndex] == "function" ? arguments[argIndex++] : null;
+
+                if (baseConstructor) {
+                    util.augment(constructor, baseConstructor);
                 }
 
-                return null;
-            },
+                var argLength = arguments.length;
+                while (argIndex < argLength) {
+                    util.extend(constructor.prototype, arguments[argIndex++]);
+                }
+
+                return constructor;
+            }
         };
 
-    provide(validator);
+    provide(util);
 });
+ns.modules.define('component.xhr', [
+    'global',
+    'vow',
+    'cloud.Error',
+    'cloud.dataSyncApi.config'
+], function (provide, global, vow, Error, config) {
+    var XMLHttpRequest = global.XDomainRequest || global.XMLHttpRequest,
+        parseHeaders = function (headers) {
+            return headers.split('\u000d\u000a').reduce(function (result, line) {
+                var parts = line.split('\u003a\u0020');
+                if (parts.length == 2) {
+                    result[parts[0].toLowerCase()] = parts[1].trim();
+                }
+                return result;
+            }, {});
+        };
+    /**
+     * @ignore
+     * Шлёт запрос посредством кросс-доменного XMLHttpRequest.
+     * @name component.util.xhr
+     * @function
+     * @statuc
+     * @param {String} baseUrl Базовый URL
+     * @param {Object} [options] Опции.
+     * @param {String} [options.method = 'GET'] HTTP-метод.
+     * @param {Object} [options.queryParams] Дополнительные query-параметры.
+     * @param {Object} [options.data] Данные.
+     * @param {Object} [options.headers] Дополнительные заголовки.
+     * @param {Boolean} [options.parse = false] true — автоматически
+     * применить JSON.parse к ответу сервера, false - не применять.
+     * @param {Boolean} [options.parseResponseHeaders = true] true —
+     * автоматически разобрать заголовки ответа и сформировать JSON-объект,
+     * false — оставить строкой.
+     * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
+     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * полученными данными, либо отклонён с ошибкой.
+     */
+    provide(function (baseUrl, options) {
+        options = options || {};
+        if (options.queryParams) {
+            baseUrl += (baseUrl.indexOf('?') == -1 ? '?' : '&') +
+                Object.keys(options.queryParams).map(function (key) {
+                    return key + '=' + global.encodeURIComponent(options.queryParams[key]);
+                }).join('&');
+        }
 
+        var deferred = vow.defer(),
+            xhr = new XMLHttpRequest(),
+            headers = options.headers || {},
+            method = options.method || 'GET';
+
+        if (method != 'GET' && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (!headers['X-Requested-With']) {
+            headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
+
+        if (options.withCredentials) {
+            xhr.withCredentials = true;
+        }
+
+        xhr.onload = function () {
+            var result = {
+                    code: this.status,
+                    data: this.responseText,
+                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
+                        this.getAllResponseHeaders() :
+                        parseHeaders(this.getAllResponseHeaders())
+                };
+
+            if (options.parse) {
+                try {
+                    result.data = JSON.parse(result.data);
+                } catch (e) {
+                    deferred.reject(new Error({
+                        message: 'JSON Parse Error ' + result.data
+                    }));
+                }
+            }
+            deferred.resolve(result);
+        };
+
+        xhr.onerror = function () {
+            deferred.reject(new Error({
+                code: 500
+            }));
+        };
+
+        xhr.open(method, baseUrl, true);
+        Object.keys(headers).forEach(function (key) {
+            xhr.setRequestHeader(key, headers[key]);
+        });
+        xhr.send(typeof options.data != 'undefined' ?
+            (typeof options.data == 'string' ?
+                options.data :
+                JSON.stringify(options.data)) :
+            undefined);
+
+        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
+            if (e instanceof vow.TimedOutError) {
+                throw new Error({
+                    code: 500,
+                    message: 'Timeout Exceeded'
+                });
+            } else {
+                throw e;
+            }
+        });
+    });
+});
 ns.modules.define('global', function (provide) {
     provide(global);
 });
