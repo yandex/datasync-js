@@ -36,7 +36,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             }
 
             if (options.token) {
-                params.headers.Authorization = 'OAuth ' + token;
+                params.headers.Authorization = 'OAuth ' + options.token;
                 return vow.resolve(params);
             } else if (client.isInitiaized()) {
                 if (client.withCredentials()) {
