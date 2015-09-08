@@ -92,11 +92,14 @@ ns.modules.define('component.xhr', [
             xhr.withCredentials = true;
         }
 
-        xhr.send(typeof options.data != 'undefined' ?
-            (typeof options.data == 'string' ?
+        if (typeof options.data != 'undefined') {
+            xhr.send(typeof options.data == 'string' ?
                 options.data :
-                JSON.stringify(options.data)) :
-            undefined);
+                JSON.stringify(options.data)
+            );
+        } else {
+            xhr.send();
+        }
 
         return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
             if (e instanceof vow.TimedOutError) {
