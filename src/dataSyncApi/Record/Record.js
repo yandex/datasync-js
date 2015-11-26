@@ -28,7 +28,7 @@ ns.modules.define('cloud.dataSyncApi.Record', [
 
     Record.json = {
         deserialize: function (json, asDelta) {
-            if (asDelta) {
+            if (asDelta || !json.fields) {
                 return new Record({
                     collection_id: json.collection_id,
                     record_id: json.record_id,

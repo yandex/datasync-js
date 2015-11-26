@@ -18,7 +18,11 @@
                 backdrop: 'static'
             });
             $login.find('#enter').on('click', function () {
-                ya.cloud.client.initialize({
+                var token = document.location.search.match(/token=(\w+)/);
+
+                ya.cloud.client.initialize(token ? {
+                    token: token[1]
+                } : {
                     key: '249666f289704886855a0f99e546e69c'
                 }).done(function () {
                     ContactListModel.create().done(function (model) {

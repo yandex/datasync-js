@@ -40,6 +40,24 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                     return Record.json.deserialize(item);
                 })
             );
+        },
+
+        serialize: function (dataset) {
+            var items = [],
+                it = dataset.iterator(),
+                item = it.next();
+
+            while (!item.done) {
+                items.push(Record.json.serialize(item.value));
+                item = it.next();
+            }
+
+            return {
+                revision: dataset.getRevision(),
+                records: {
+                    items: items
+                }
+            };
         }
     };
 

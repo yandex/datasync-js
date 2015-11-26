@@ -21,6 +21,12 @@ gulp.task('debug', function () {
                     footer: "\nns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);\n"
                 })
             ),
+            gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
+                .pipe(wrapper({
+                    header: '(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                    footer: "\nns.localForage = module.exports; ns.modules.define('localForage', function (provide) { provide(ns.localForage); }); })(ns);\n"
+                })
+            ),
             gulp.src('src/*/**/*.js'),
             gulp.src('src/outro.js')
         )

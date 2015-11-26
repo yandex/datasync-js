@@ -8,11 +8,12 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.politics',
     'cloud.Error',
     'component.util',
-    'vow'
+    'vow',
+    'localForage'
 ], function (provide,
              config, http, client,
              Dataset, Transaction, Operation, politics,
-             Error, util, vow) {
+             Error, util, vow, localForage) {
         /**
          * @class Класс, представляющий методы для работы с базой данных.
          * Возвращается функцией {@link cloud.dataSyncApi.openDatabase}.
@@ -28,6 +29,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             this._context = options.context;
             this._token = options.token;
             this._locked = true;
+            this._useClientStorage = options.use_client_storage;
             this._gone = null;
             this._dataset = null;
             this._pendingCallbacks = [];
@@ -44,16 +46,9 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                         code: res.code
                     }));
                 } else {
-                    http.getSnapshot(options).then(function (res) {
-                        if (res.code == 200) {
-                            this._dataset = Dataset.json.deserialize(res.data);
-                            this._locked = false;
-                            deferred.resolve(this);
-                        } else {
-                            fail(new Error({
-                                code: res.code
-                            }));
-                        }
+                    this._getSnapshot(res.data, options).then(function () {
+                        this._locked = false;
+                        deferred.resolve(this);
                     }, fail, this);
                 }
             }, fail, this);
@@ -81,6 +76,92 @@ ns.modules.define('cloud.dataSyncApi.Database', [
      */
 
     util.defineClass(Database, /** @lends cloud.dataSyncApi.Database.prototype */ {
+        /**
+         * @ignore
+         * Читает снапшот базы по HTTP или из локального хранилица.
+         * @param {Object} metadata Метаданные базы.
+         * @param {Object} options Опции открытия базы.
+         * @returns {vow.Promise} Объект-Promise.
+         */
+        _getSnapshot: function (metadata, options) {
+            var deferred = vow.defer(),
+                getHttpSnapshot = this._getHttpSnapshot.bind(this),
+                createDataset = this._createDataset.bind(this);
+
+            if (metadata.handle && this._useClientStorage) {
+                this._databaseHandle = metadata.handle;
+
+                localForage.getItem(
+                    'yandex_cloud_data_sync_v1_' + metadata.handle,
+                    function (error, data) {
+                        try {
+                            data = JSON.parse(data);
+                        } catch (e) {
+                            data = null;
+                        }
+
+                        if (error || !data) {
+                            deferred.resolve(getHttpSnapshot(options));
+                        } else {
+                            deferred.resolve(createDataset(data, {
+                                needUpdate: true
+                            }));
+                        }
+                    }
+                );
+            } else {
+                deferred.resolve(getHttpSnapshot(options));
+            }
+
+            return deferred.promise();
+        },
+
+        _getHttpSnapshot: function (options) {
+            return http.getSnapshot(options).then(function (res) {
+                if (res.code == 200) {
+                    this._createDataset(res.data);
+                } else {
+                    throw new Error({
+                        code: res.code
+                    });
+                }
+            }, null, this);
+        },
+
+        _createDataset: function (data, options) {
+            var deferred = vow.defer();
+
+            this._dataset = Dataset.json.deserialize(data);
+
+            if (options && options.need_update) {
+                this._explicitUpdate().then(function () {
+                    deferred.resolve();
+                }, function (e) {
+                    if (e.code == 410) {
+                        deferred.resolve(this._getHttpSnapshot(options));
+                    } else {
+                        deferred.reject(e);
+                    }
+                }, this);
+            } else {
+                if (this._useClientStorage) {
+                    this._saveSnapshot();
+                }
+                deferred.resolve();
+            }
+
+            return deferred.promise();
+        },
+
+        _saveSnapshot: function () {
+            if (this._useClientStorage && this._databaseHandle) {
+                localForage.setItem(
+                    'yandex_cloud_data_sync_v1_' + this._databaseHandle,
+                    JSON.stringify(Dataset.json.serialize(this._dataset))
+                );
+            }
+        },
+
         /**
          * Подписывается на событие.
          * @param {String} type Тип события.
@@ -158,6 +239,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
         _explicitUpdate: function () {
             return this._applyDeltas().then(function (revision) {
+                this._saveSnapshot();
                 return revision;
             }, function (e) {
                 if (e.code == 410) {

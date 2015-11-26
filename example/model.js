@@ -8,7 +8,8 @@ var ContactListModel = function (options) {
         return ya.cloud.dataSyncApi.openDatabase({
             database_id: this._databaseId,
             context: 'app',
-            create_if_not_exists: true
+            create_if_not_exists: true,
+            use_client_storage: true
         }).then(function (database) {
             this._database = database;
             return this;

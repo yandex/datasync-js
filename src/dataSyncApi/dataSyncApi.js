@@ -24,6 +24,9 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * false — не создавать.
      * @param {Boolean} [options.background_sync = true] true — автоматически
      * синхронизировать базу данных в фоновом режиме, false — не синхронизировать.
+     * @param {Boolean} [options.use_client_storage = false] true — закэшировать
+     * снапшот базы в клиентском браузере (используя indexedDb или сходные технологии),
+     * false — не кэшировать.
      * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён экземпляром
      * класса {@link cloud.dataSyncApi.Database} при успешном открытии базы данных, либо отклонён
      * с одной из следующих ошибок:
