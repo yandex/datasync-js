@@ -2,7 +2,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.config',
     'cloud.dataSyncApi.http',
     'cloud.client',
-    'cloud.dataSyncApi.Dataset',
+    'cloud.dataSyncApi.DatasetController',
     'cloud.dataSyncApi.Transaction',
     'cloud.dataSyncApi.Operation',
     'cloud.dataSyncApi.politics',
@@ -12,7 +12,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'localForage'
 ], function (provide,
              config, http, client,
-             Dataset, Transaction, Operation, politics,
+             DatasetController, Transaction, Operation, politics,
              Error, util, vow, localForage) {
         /**
          * @class Класс, представляющий методы для работы с базой данных.
@@ -22,38 +22,24 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          * @noconstructor
          */
     var Database = function (options) {
-            var deferred = vow.defer(),
-                fail = deferred.reject.bind(deferred);
-
             this._id = options.database_id;
             this._context = options.context;
             this._token = options.token;
             this._locked = true;
-            this._useClientStorage = options.use_client_storage;
-            this._gone = null;
-            this._dataset = null;
+            this._datasetController = null;
             this._pendingCallbacks = [];
-            this._postDeltaFail = null;
             this._possiblyMissedDelta = null;
+            this._missedDelta = null;
 
             this._listeners = {
                 update: []
             };
 
-            http.putDatabase(options).then(function (res) {
-                if (res.code != 200 && res.code != 201) {
-                    fail(new Error({
-                        code: res.code
-                    }));
-                } else {
-                    this._getSnapshot(res.data, options).then(function () {
-                        this._locked = false;
-                        deferred.resolve(this);
-                    }, fail, this);
-                }
-            }, fail, this);
-
-            return deferred.promise();
+            return DatasetController.create(options).then(function (controller) {
+                this._datasetController = controller;
+                this._locked = false;
+                return this;
+            }, null, this);
         };
 
     /**
@@ -67,6 +53,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
      * @name cloud.dataSyncApi.Iterator
      * @noconstructor
      */
+
     /**
      * @name cloud.dataSyncApi.Iterator.next
      * @returns {Object} Следующая запись в БД в виде JSON-объекта с полями
@@ -76,92 +63,6 @@ ns.modules.define('cloud.dataSyncApi.Database', [
      */
 
     util.defineClass(Database, /** @lends cloud.dataSyncApi.Database.prototype */ {
-        /**
-         * @ignore
-         * Читает снапшот базы по HTTP или из локального хранилица.
-         * @param {Object} metadata Метаданные базы.
-         * @param {Object} options Опции открытия базы.
-         * @returns {vow.Promise} Объект-Promise.
-         */
-        _getSnapshot: function (metadata, options) {
-            var deferred = vow.defer(),
-                getHttpSnapshot = this._getHttpSnapshot.bind(this),
-                createDataset = this._createDataset.bind(this);
-
-            if (metadata.handle && this._useClientStorage) {
-                this._databaseHandle = metadata.handle;
-
-                localForage.getItem(
-                    'yandex_cloud_data_sync_v1_' + metadata.handle,
-                    function (error, data) {
-                        try {
-                            data = JSON.parse(data);
-                        } catch (e) {
-                            data = null;
-                        }
-
-                        if (error || !data) {
-                            deferred.resolve(getHttpSnapshot(options));
-                        } else {
-                            deferred.resolve(createDataset(data, {
-                                needUpdate: true
-                            }));
-                        }
-                    }
-                );
-            } else {
-                deferred.resolve(getHttpSnapshot(options));
-            }
-
-            return deferred.promise();
-        },
-
-        _getHttpSnapshot: function (options) {
-            return http.getSnapshot(options).then(function (res) {
-                if (res.code == 200) {
-                    this._createDataset(res.data);
-                } else {
-                    throw new Error({
-                        code: res.code
-                    });
-                }
-            }, null, this);
-        },
-
-        _createDataset: function (data, options) {
-            var deferred = vow.defer();
-
-            this._dataset = Dataset.json.deserialize(data);
-
-            if (options && options.need_update) {
-                this._explicitUpdate().then(function () {
-                    deferred.resolve();
-                }, function (e) {
-                    if (e.code == 410) {
-                        deferred.resolve(this._getHttpSnapshot(options));
-                    } else {
-                        deferred.reject(e);
-                    }
-                }, this);
-            } else {
-                if (this._useClientStorage) {
-                    this._saveSnapshot();
-                }
-                deferred.resolve();
-            }
-
-            return deferred.promise();
-        },
-
-        _saveSnapshot: function () {
-            if (this._useClientStorage && this._databaseHandle) {
-                localForage.setItem(
-                    'yandex_cloud_data_sync_v1_' + this._databaseHandle,
-                    JSON.stringify(Dataset.json.serialize(this._dataset))
-                );
-            }
-        },
-
         /**
          * Подписывается на событие.
          * @param {String} type Тип события.
@@ -238,84 +139,36 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         _explicitUpdate: function () {
-            return this._applyDeltas().then(function (revision) {
-                this._saveSnapshot();
-                return revision;
-            }, function (e) {
-                if (e.code == 410) {
-                    this._gone = vow.reject({
-                        code: 410,
-                        message: 'Database snapshot outdated'
-                    });
+            var oldRevision = this.getRevision();
+            return this._datasetController.update({
+                possiblyMissedDelta: this._possiblyMissedDelta
+            }).then(function (res) {
+                if (res.missedDeltaFound) {
+                    this._missedDelta = this._possiblyMissedDelta;
+                    this._possiblyMissedDelta = null;
                 }
-                throw e;
-            }, this);
-        },
-
-        _applyDeltas: function () {
-            var deferred = vow.defer(),
-                deltas = [],
-                id = this._id,
-                context = this._context,
-                token = this._token,
-                dataset = this._dataset,
-
-                notify = this._notify.bind(this),
-
-                getDeltas = function (revision, checkFailedDelta) {
-                    http.getDeltas({
-                        database_id: id,
-                        base_revision: revision,
-                        context: context,
-                        token: token,
-                        limit: config.deltaLimit
-                    }).then(function (res) {
-                        if (res.code == 200) {
-                            deltas.push(res.data.items);
-                            var lastRevision = res.data.items.length ?
-                                    res.data.items[res.data.items.length - 1].revision :
-                                    res.data.revision;
-
-                            if (lastRevision == res.data.revision) {
-                                deltas = [].concat.apply([], deltas);
-                                if (deltas.length) {
-                                    dataset.applyDeltas(deltas);
-                                    checkFailedDelta(deltas[deltas.length - 1].delta_id);
-                                }
-                                deferred.resolve(dataset.getRevision());
-                                notify('update', dataset.getRevision());
-                            } else {
-                                getDeltas(lastRevision, checkFailedDelta);
-                            }
-                        } else {
-                            deferred.reject(new Error({
-                                code: res.code
-                            }));
-                        }
-                    }, function (e) {
-                        deferred.reject(e);
-                    });
-                };
-
-            getDeltas(this._dataset.getRevision(), (function (lastDeltaId) {
-                if (this._postDeltaFail && lastDeltaId && this._postDeltaFail == lastDeltaId) {
-                    this._postDeltaFail = null;
-                    this._possiblyMissedDelta = lastDeltaId;
+                if (res.revision != oldRevision) {
+                    this._notify('update', res.revision);
                 }
-            }).bind(this));
-
-            return deferred.promise();
+                return res.revision;
+            }, null, this);
         },
 
         _executeExclusiveTask: function (callback) {
-            var deferred = vow.defer();
+            var gone = this._datasetController.isGone();
 
-            this._pendingCallbacks.push([callback, deferred]);
-            if (!this._locked) {
-                this._proceedPendingQueue();
+            if (gone) {
+                return gone;
+            } else {
+                var deferred = vow.defer();
+
+                this._pendingCallbacks.push([callback, deferred]);
+                if (!this._locked) {
+                    this._proceedPendingQueue();
+                }
+
+                return deferred.promise();
             }
-
-            return deferred.promise();
         },
 
         _proceedPendingQueue: function () {
@@ -325,23 +178,19 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
             this._locked = true;
 
-            if (!this._gone) {
-                callback().then(function (res) {
-                    deferred.resolve(res);
-                    this._locked = false;
-                    if (this._pendingCallbacks.length) {
-                        this._proceedPendingQueue();
-                    }
-                }, function (e) {
-                    deferred.reject(e);
-                    this._locked = false;
-                    if (this._pendingCallbacks.length) {
-                        this._proceedPendingQueue();
-                    }
-                }, this);
-            } else {
-                deferred.resolve(this._gone);
-            }
+            callback().then(function (res) {
+                deferred.resolve(res);
+                this._locked = false;
+                if (this._pendingCallbacks.length) {
+                    this._proceedPendingQueue();
+                }
+            }, function (e) {
+                deferred.reject(e);
+                this._locked = false;
+                if (this._pendingCallbacks.length) {
+                    this._proceedPendingQueue();
+                }
+            }, this);
         },
 
         /**
@@ -349,7 +198,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          * версию БД.
          */
         getRevision: function () {
-            return this._dataset.getRevision();
+            return this._datasetController.getDataset().getRevision();
         },
 
         /**
@@ -374,7 +223,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
         _patch: function (parameters, politicsKey) {
             var deferred = vow.defer(),
-                dataset = this._dataset,
+                dataset = this._datasetController.getDataset(),
                 delta_id = parameters.delta_id,
 
                 success = function () {
@@ -383,17 +232,17 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
                 fail = (function (e) {
                     if (e.postDeltaFail) {
-                        this._postDeltaFail = e.postDeltaFail;
+                        this._possiblyMissedDelta = e.postDeltaFail;
                     }
 
                     deferred.reject(e);
                 }).bind(this);
 
-            if (this._possiblyMissedDelta && parameters.delta_id == this._possiblyMissedDelta) {
-                this._possiblyMissedDelta = null;
+            if (this._missedDelta && delta_id == this._missedDelta) {
+                this._missedDelta = null;
                 success();
             } else {
-                var preparedOperation = prepareOperation(this._dataset, parameters, politicsKey),
+                var preparedOperation = prepareOperation(dataset, parameters, politicsKey),
                     operations = preparedOperation.operations,
                     conflicts = preparedOperation.conflicts,
                     revisionHistory = preparedOperation.revisionHistory,
@@ -424,7 +273,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                                 dataset.applyDeltas([ delta ]);
                                 success();
                                 this._notify('update', revision);
-                            }, function (e) {
+                            },
+                            function (e) {
                                 if (e.code == 409) {
                                     this._explicitUpdate().then(
                                         function () {
@@ -477,14 +327,14 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          * @returns {cloud.dataSyncApi.Record} Запись.
          */
         getRecord: function (collection_id, record_id) {
-            return this._dataset.getRecord(collection_id, record_id);
+            return this._datasetController.getDataset().getRecord(collection_id, record_id);
         },
 
         /**
          * @returns {Integer} Число записей в базе.
          */
         getRecordsCount: function () {
-            return this._dataset.getLength();
+            return this._datasetController.getDataset().getLength();
         },
 
         /**
@@ -492,7 +342,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          * @returns {cloud.dataSyncApi.Iterator} Возвращает итератор по записям в БД.
          */
         iterator: function (collection_id) {
-            return this._dataset.iterator(collection_id);
+            return this._datasetController.getDataset().iterator(collection_id);
         },
 
         /**
@@ -509,7 +359,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 collection_id = null;
             }
 
-            var it = this._dataset.iterator(collection_id),
+            var it = this._datasetController.getDataset().iterator(collection_id),
                 item = it.next(),
                 index = 0;
 

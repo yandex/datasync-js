@@ -5,39 +5,30 @@ if (typeof XMLHttpRequest == 'undefined') {
     XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
 }
 
-ya.modules.define('test.cloud.dataSyncApi.Database', [
+ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
     'vow',
-    'cloud.dataSyncApi.Database',
-    'cloud.dataSyncApi.Record',
-    'cloud.dataSyncApi.Operation',
-    'cloud.dataSyncApi.FieldOperation',
-    'cloud.dataSyncApi.Value',
-    'cloud.dataSyncApi.http',
-    'cloud.Error',
-    'cloud.dataSyncApi.config'
-], function (provide, vow, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
+    'cloud.dataSyncApi.DatasetController'
+], function (provide, vow, DatasetController) {
     var params = typeof process != 'undefined' ?
-            Object.keys(process.env).reduce(function (params, key) {
-                if (key.indexOf('npm_config_') == 0) {
-                    params[key.slice('npm_config_'.length)] = process.env[key];
-                }
-                return params;
-            }, {}) :
-            (window.location.search || '').replace(/^\?/, '').split('&').reduce(function (params, param) {
-                var pair = param.split('=', 2);
-                params[pair[0]] = pair[1];
-                return params;
-            }, {}),
+             Object.keys(process.env).reduce(function (params, key) {
+                 if (key.indexOf('npm_config_') == 0) {
+                     params[key.slice('npm_config_'.length)] = process.env[key];
+                 }
+                 return params;
+             }, {}) :
+             (window.location.search || '').replace(/^\?/, '').split('&').reduce(function (params, param) {
+                 var pair = param.split('=', 2);
+                 params[pair[0]] = pair[1];
+                 return params;
+             }, {}),
         token = params.token,
         context = params.context || 'app',
-        use_client_storage = params.use_client_storage == 'true',
         name = params.database_id || 'ya_cloud_api_test',
 
         defaultParams = {
             database_id: name,
             context: context,
-            token: token,
-            use_client_storage: use_client_storage
+            token: token
         },
 
         transaction,
@@ -111,17 +102,17 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         value: null
                     })
                     .push().then(fail, function (e) {
-                        expect(e.code).to.be(409);
-                        expect(e.conflicts.length).to.be(2);
-                        expect(e.conflicts[0].index).to.be(1);
-                        expect(e.conflicts[0].conflict.getType()).to.be('record_already_exists');
-                        expect(e.conflicts[1].index).to.be(2);
-                        expect(e.conflicts[1].conflict.getType()).to.be('invalid_field_change');
-                        expect(e.conflicts[1].conflict.getFieldChangeConflicts().length).to.be(1);
-                        expect(e.conflicts[1].conflict.getFieldChangeConflicts()[0].index).to.be(0);
-                        expect(e.conflicts[1].conflict.getFieldChangeConflicts()[0].type).to.be('modify_not_a_list_field');
-                        doneHandler(done);
-                    }).fail(fail);
+                    expect(e.code).to.be(409);
+                    expect(e.conflicts.length).to.be(2);
+                    expect(e.conflicts[0].index).to.be(1);
+                    expect(e.conflicts[0].conflict.getType()).to.be('record_already_exists');
+                    expect(e.conflicts[1].index).to.be(2);
+                    expect(e.conflicts[1].conflict.getType()).to.be('invalid_field_change');
+                    expect(e.conflicts[1].conflict.getFieldChangeConflicts().length).to.be(1);
+                    expect(e.conflicts[1].conflict.getFieldChangeConflicts()[0].index).to.be(0);
+                    expect(e.conflicts[1].conflict.getFieldChangeConflicts()[0].type).to.be('modify_not_a_list_field');
+                    doneHandler(done);
+                }).fail(fail);
             }
         });
 
@@ -170,33 +161,33 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         value: 1
                     })
                     .push().then(function (res) {
-                        expect(res).to.be(database.getRevision());
+                    expect(res).to.be(database.getRevision());
 
-                        var dump = {col: {}};
-                        database.forEach(function (record) {
-                            dump[record.getCollectionId()][record.getRecordId()] = record.getFieldIds().reduce(function (fields, key) {
-                                var value = record.getFieldValue(key);
-                                if (value.getType() != 'list') {
-                                    fields[key] = value.valueOf();
-                                } else {
-                                    fields[key] = '[' + value.valueOf().join('') + ']';
-                                }
-                                return fields;
-                            }, {});
-                        });
-                        expect(dump).to.eql({
-                            col: {
-                                rec: {
-                                    a: 0
-                                },
-                                rec_2: {
-                                    a: '[1]',
-                                    c: 3.14
-                                }
+                    var dump = {col: {}};
+                    database.forEach(function (record) {
+                        dump[record.getCollectionId()][record.getRecordId()] = record.getFieldIds().reduce(function (fields, key) {
+                            var value = record.getFieldValue(key);
+                            if (value.getType() != 'list') {
+                                fields[key] = value.valueOf();
+                            } else {
+                                fields[key] = '[' + value.valueOf().join('') + ']';
                             }
-                        });
-                        doneHandler(done);
-                    }, fail).fail(fail);
+                            return fields;
+                        }, {});
+                    });
+                    expect(dump).to.eql({
+                        col: {
+                            rec: {
+                                a: 0
+                            },
+                            rec_2: {
+                                a: '[1]',
+                                c: 3.14
+                            }
+                        }
+                    });
+                    doneHandler(done);
+                }, fail).fail(fail);
             }
         });
 
@@ -221,20 +212,20 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         record_id: 'rec'
                     })
                     .push().then(function () {
+                    expect(counter).to.be(1);
+                    database.off('update', listener);
+
+                    database.createTransaction()
+                        .insertRecords({
+                            collection_id: 'col',
+                            record_id: 'rec_2'
+                        })
+                        .push().then(function () {
                         expect(counter).to.be(1);
-                        database.off('update', listener);
-
-                        database.createTransaction()
-                            .insertRecords({
-                                collection_id: 'col',
-                                record_id: 'rec_2'
-                            })
-                            .push().then(function () {
-                                expect(counter).to.be(1);
-                                doneHandler(done);
-                            }, fail).fail(fail);
-
+                        doneHandler(done);
                     }, fail).fail(fail);
+
+                }, fail).fail(fail);
             }
         });
 
@@ -371,8 +362,8 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         }
                     ])
                     .push().then(function () {
-                        makeConflict(database);
-                    }, fail).fail(fail);
+                    makeConflict(database);
+                }, fail).fail(fail);
             }
 
             function makeConflict (database) {
@@ -462,13 +453,13 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
 
             function runConcurrentUpdates (database) {
                 var transaction1 = database.createTransaction()
-                        .insertRecords({
-                            record_id: 'rec',
-                            collection_id: 'col',
-                            fields: {
-                                a: 1
-                            }
-                        });
+                    .insertRecords({
+                        record_id: 'rec',
+                        collection_id: 'col',
+                        fields: {
+                            a: 1
+                        }
+                    });
                 var transaction2 = database.createTransaction()
                     .insertRecords({
                         record_id: 'rec_2',
@@ -479,11 +470,11 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                     });
 
                 var promises = [
-                        transaction1.push(),
-                        database.update(),
-                        transaction2.push(),
-                        database.update()
-                    ];
+                    transaction1.push(),
+                    database.update(),
+                    transaction2.push(),
+                    database.update()
+                ];
 
                 vow.all(promises).then(function (res) {
                     expect(res[0] > 0).to.be.ok();
@@ -597,8 +588,8 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         }
                     })
                     .push().then(function () {
-                        postDeltas(database);
-                    }, fail).fail(fail);
+                    postDeltas(database);
+                }, fail).fail(fail);
             });
 
             function postDeltas (database) {
@@ -612,12 +603,12 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                 };
 
                 var tr = database.createTransaction()
-                        .updateRecordFields({
-                            collection_id: 'col',
-                            record_id: 'rec'
-                        }, {
-                            a: undefined
-                        });
+                    .updateRecordFields({
+                        collection_id: 'col',
+                        record_id: 'rec'
+                    }, {
+                        a: undefined
+                    });
 
                 tr.push().then(fail, function () {
                     http.postDeltas = old;
