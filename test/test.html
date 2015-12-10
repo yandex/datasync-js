@@ -10,12 +10,15 @@
     <script>mocha.setup('bdd')</script>
     <script src="../build/cloud-data-sync-api.js"></script>
     <!-- Tests -->
+    <script src="test.util.js"></script>
     <script src="test.cloud.dataSyncApi.Value.js"></script>
     <script src="test.cloud.dataSyncApi.Record.js"></script>
     <script src="test.cloud.dataSyncApi.http.js"></script>
     <script src="test.cloud.dataSyncApi.Transaction.js"></script>
     <script src="test.cloud.dataSyncApi.Dataset.js"></script>
+    <script src="test.cloud.dataSyncApi.DatasetController.js"></script>
     <script src="test.cloud.dataSyncApi.Database.js"></script>
+    <script src="test.cloud.dataSyncApi.cache.js"></script>
     <script src="test.cloud.dataSyncApi.js"></script>
     <script src="test.cloud.Error.js"></script>
     <script>
@@ -25,7 +28,9 @@
             'test.cloud.dataSyncApi.http',
             'test.cloud.dataSyncApi.Transaction',
             'test.cloud.dataSyncApi.Dataset',
+            'test.cloud.dataSyncApi.DatasetController',
             'test.cloud.dataSyncApi.Database',
+            'test.cloud.dataSyncApi.cache',
             'test.cloud.dataSyncApi',
             'test.cloud.Error'
         ], function () {

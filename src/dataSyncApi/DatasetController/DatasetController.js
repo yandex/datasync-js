@@ -2,13 +2,13 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
     'cloud.dataSyncApi.config',
     'cloud.dataSyncApi.http',
     'cloud.dataSyncApi.Dataset',
+    'cloud.dataSyncApi.cache',
     'cloud.Error',
     'component.util',
-    'vow',
-    'localForage'
+    'vow'
 ], function (provide,
-     config, http, Dataset, Error,
-     util, vow, localForage) {
+     config, http, Dataset, cache, Error,
+     util, vow) {
 
     /**
      * @ignore
@@ -21,7 +21,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             this._gone = false;
             this._updatePromise = null;
             this._dataset = null;
-            this._prefix = config.storagePrefix + '_' + this._options.context + '_';
+            this._prefix = this._options.context + '_';
             return this._createDataset().then(function () {
                 return this;
             }, null, this);
@@ -54,46 +54,26 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
 
         _getSnapshot: function (metadata) {
             var options = this._options,
-                getHttpSnapshot = this._getHttpSnapshot.bind(this),
-                initDataset = this._initDataset.bind(this),
-                deferred = vow.defer();
+                handle = this._databaseHandle = metadata.handle;
 
-            if (metadata.handle && options.use_client_storage) {
-                this._databaseHandle = metadata.handle;
-
-                localForage.getItem(
-                    this._prefix + metadata.handle,
-                    function (error, data) {
-                        try {
-                            data = JSON.parse(data);
-                        } catch (e) {
-                            data = null;
-                        }
-
-                        if (error || !data) {
-                            deferred.resolve(getHttpSnapshot(options));
-                        } else {
-                            deferred.resolve(initDataset(data, {
-                                needUpdate: true
-                            }));
-                        }
-                    }
-                );
+            if (handle && options.use_client_storage) {
+                return cache.getDataset(options.context, handle).then(function (dataset) {
+                    return this._initDataset(dataset, {
+                        need_update: true
+                    });
+                }, function () {
+                    return this._getHttpSnapshot();
+                }, this);
             } else {
-                deferred.resolve(getHttpSnapshot(options));
+                return this._getHttpSnapshot();
             }
-
-            return deferred.promise();
         },
 
         _getHttpSnapshot: function () {
             return http.getSnapshot(this._options).then(function (res) {
                 if (res.code == 200) {
-                    return this._initDataset(res.data);
+                    return this._initDataset(Dataset.json.deserialize(res.data));
                 } else {
-                    if (res.code == 410) {
-                        this._onGone();
-                    }
                     throw new Error({
                         code: res.code
                     });
@@ -101,15 +81,11 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             }, null, this);
         },
 
-        _initDataset: function (data, parameters) {
-            var deferred = vow.defer();
-
-            this._dataset = Dataset.json.deserialize(data);
+        _initDataset: function (dataset, parameters) {
+            this._dataset = dataset;
 
             if (parameters && parameters.need_update) {
-                this.update().then(function () {
-                    deferred.resolve();
-                }, function (e) {
+                return this.update().fail(function (e) {
                     if (e.code == 410) {
                         deferred.resolve(this._getHttpSnapshot(options));
                     } else {
@@ -117,21 +93,19 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                     }
                 }, this);
             } else {
-                if (this._options.use_client_storage) {
-                    this._saveSnapshot();
-                }
-                deferred.resolve();
+                return vow.resolve();
             }
-
-            return deferred.promise();
         },
 
         _saveSnapshot: function () {
             if (this._options.use_client_storage && this._databaseHandle) {
-                localForage.setItem(
-                    this._prefix + this._databaseHandle,
-                    JSON.stringify(Dataset.json.serialize(this._dataset))
+                return cache.saveDataset(
+                    this._options.context,
+                    this._databaseHandle,
+                    this._dataset
                 );
+            } else {
+                return vow.resolve();
             }
         },
 
@@ -140,9 +114,10 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                 return this._gone;
             } else if (!this._updatePromise) {
                 this._updatePromise = this._applyDeltas(parameters).then(function (res) {
-                    this._saveSnapshot();
-                    this._updatePromise = null;
-                    return res;
+                    return this._saveSnapshot().always(function () {
+                        this._updatePromise = null;
+                        return res;
+                    }, this);
                 }, function (e) {
                     if (e.code == 410) {
                         this._onGone();

@@ -24,7 +24,7 @@ gulp.task('debug', function () {
             gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
                 .pipe(wrapper({
                     header: '(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
-                    footer: "\nns.localForage = module.exports; ns.modules.define('localForage', function (provide) { provide(ns.localForage); }); })(ns);\n"
+                    footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide, config) { provide(localForage); }); })(ns);\n"
                 })
             ),
             gulp.src('src/*/**/*.js'),
@@ -59,3 +59,4 @@ gulp.task('watch', ['debug'], function () {
 gulp.task('clean', function (callback) {
     del(['build/cloud-data-sync-api*.js'], callback);
 });
+

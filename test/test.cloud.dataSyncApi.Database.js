@@ -499,27 +499,6 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
             }
         });
 
-        it('Snapshot Gone', function (done) {
-            var failer = getFailer(done),
-                old = http.getSnapshot,
-                fail = function () {
-                    http.getSnapshot = old;
-                    failer();
-                };
-
-            http.getSnapshot = function () {
-                return vow.resolve({
-                    code: 410
-                });
-            };
-
-            prepareDatabase(fail, function (e) {
-                expect(e.code).to.be(410);
-                http.getSnapshot = old;
-                done();
-            });
-        });
-
         it('Gone', function (done) {
             var failer = getFailer(done),
                 old = http.getDeltas,
