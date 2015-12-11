@@ -157,6 +157,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
                         }]
                     }
                 });
+                undoDeltas();
                 doneHandler(done);
             }, fail).fail(fail);
         });

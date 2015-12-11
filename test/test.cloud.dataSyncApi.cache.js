@@ -49,7 +49,7 @@ ya.modules.define('test.cloud.dataSyncApi.cache', [
                         if (e) {
                             fail(e);
                         } else {
-                            checkDataset(Dataset.json.deserialize(res), dataset);
+                            checkDataset(Dataset.json.deserialize(JSON.parse(res)), dataset);
                             done();
                         }
                     }

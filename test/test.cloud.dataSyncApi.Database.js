@@ -7,6 +7,7 @@ if (typeof XMLHttpRequest == 'undefined') {
 
 ya.modules.define('test.cloud.dataSyncApi.Database', [
     'vow',
+    'cloud.dataSyncApi.cache',
     'cloud.dataSyncApi.Database',
     'cloud.dataSyncApi.Record',
     'cloud.dataSyncApi.Operation',
@@ -15,7 +16,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.http',
     'cloud.Error',
     'cloud.dataSyncApi.config'
-], function (provide, vow, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
+], function (provide, vow, cache, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
     var params = typeof process != 'undefined' ?
             Object.keys(process.env).reduce(function (params, key) {
                 if (key.indexOf('npm_config_') == 0) {
@@ -49,13 +50,19 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                 }, 100);
             }
 
-            http.deleteDatabase(defaultParams).then(end, done);
+            vow.all([
+                http.deleteDatabase(defaultParams),
+                cache.clear()
+            ]).then(end, done);
         };
 
     describe('cloud.dataSyncApi.Database', function () {
         var getFailer = function (done) {
                 return function (e) {
-                    http.deleteDatabase(defaultParams).then(function () {
+                    vow.all([
+                        http.deleteDatabase(defaultParams),
+                        cache.clear
+                    ]).then(function () {
                         done(e || new Error());
                     }, function (e) {
                         done(e);
