@@ -93,7 +93,9 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                     }
                 }, this);
             } else {
-                return vow.resolve();
+                return this._saveSnapshot().always(function () {
+                    return vow.resolve();
+                });
             }
         },
 

@@ -75,7 +75,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                 }, fail).fail(fail);
             };
 
-        this.timeout(10000);
+        this.timeout(30000);
 
         it('constructor', function (done) {
             var fail = getFailer(done);
@@ -612,6 +612,87 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         doneHandler(done);
                     }, fail).fail(fail);
                 }).fail(fail);
+            }
+        });
+
+        it('Extremely Large Data', function (done) {
+            var generateFields = function (num) {
+                    var res = [];
+
+                    for (var i = 0; i < num; i++) {
+                        var type = ['string', 'datetime', 'double'][Math.floor(Math.random() * 3)],
+                            value;
+
+                        switch (type) {
+                            case 'string':
+                                value = Math.random().toString();
+                                break;
+                            case 'datetime':
+                                value = (new Date()).toISOString();
+                                break;
+                            case 'double':
+                                value = Math.random();
+                                break;
+                        }
+
+                        var change = {
+                                "field_id": Math.random().toString(),
+                                "change_type": "set",
+                                "value": {
+                                    "type": type
+                                }
+                            };
+
+                        change.value[type] = value;
+
+                        res.push(change);
+                    }
+                    return res;
+                },
+                generateRecords = function (num, fieldNum) {
+                    var res = [];
+                    for (var i = 0; i < num; i++) {
+                        res.push({
+                            "record_id": Math.random().toString(),
+                            "collection_id": "default",
+                            "change_type": "set",
+                            "changes": generateFields(fieldNum)
+                        });
+                    }
+                    return res;
+                },
+                largeData = generateRecords(1000, 10),
+                fail = getFailer(done);
+
+            prepareDatabase(function () {
+                http.postDeltas(Object.assign({}, defaultParams, {
+                    base_revision: 0,
+                    data: {
+                        changes: largeData
+                    }
+                })).then(function (res) {
+                    if (res.code == 201) {
+                        testColdCache();
+                    } else {
+                        fail(new Error(res));
+                    }
+                }, fail).fail(fail);
+            }, fail);
+
+            function testColdCache () {
+                var start = Date.now();
+                (new Database(defaultParams)).then(function () {
+                    console.log(Date.now() - start);
+                    testWarmCache();
+                }, fail).fail(fail);
+            }
+
+            function testWarmCache () {
+                var start = Date.now();
+                (new Database(defaultParams)).then(function () {
+                    console.log(Date.now() - start);
+                    doneHandler(done);
+                }, fail).fail(fail);
             }
         });
     });
