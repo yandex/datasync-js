@@ -4599,6 +4599,21 @@ ns.modules.define('component.util', function (provide) {
                 }
 
                 return constructor;
+            },
+
+            cancelableCallback: function (callback) {
+                var canceled = false,
+                    result = function () {
+                        if (!canceled) {
+                            callback.apply(null, [].slice.call(arguments));
+                        }
+                    };
+
+                result.cancel = function () {
+                    canceled = true;
+                };
+
+                return result;
             }
         };
 
@@ -4775,17 +4790,18 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.http',
     'cloud.client',
     'cloud.dataSyncApi.DatasetController',
+    'cloud.dataSyncApi.watcher',
     'cloud.dataSyncApi.Transaction',
     'cloud.dataSyncApi.Operation',
     'cloud.dataSyncApi.politics',
     'cloud.Error',
     'component.util',
-    'vow',
-    'localForage'
+    'vow'
 ], function (provide,
-             config, http, client,
-             DatasetController, Transaction, Operation, politics,
-             Error, util, vow, localForage) {
+    config, http, client,
+    DatasetController, watcher,
+    Transaction, Operation, politics,
+    Error, util, vow) {
         /**
          * @class Класс, представляющий методы для работы с базой данных.
          * Возвращается функцией {@link cloud.dataSyncApi.openDatabase}.
@@ -4810,6 +4826,10 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             return DatasetController.create(options).then(function (controller) {
                 this._datasetController = controller;
                 this._locked = false;
+                if (options.background_sync || typeof options.background_sync == 'undefined') {
+                    this._watchCallback = this.update.bind(this);
+                    watcher.subscribe(this, this._watchCallback);
+                }
                 return this;
             }, null, this);
         };
@@ -4910,6 +4930,14 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             return this._executeExclusiveTask(this._explicitUpdate.bind(this));
         },
 
+        close: function () {
+            if (this._options.background_sync || typeof this._options.background_sync == 'undefined') {
+                watcher.unsubscribe(this, this._watchCallback);
+            }
+            this._datasetController.close();
+            this._locked = true;
+        },
+
         _explicitUpdate: function () {
             var oldRevision = this.getRevision();
             return this._datasetController.update({
@@ -4978,6 +5006,13 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          */
         getDatabaseId: function () {
             return this._id;
+        },
+
+        /**
+         * @returns {String} Контекст БД (app или user).
+         */
+        getContext: function () {
+            return this._context;
         },
 
         /**
@@ -5576,6 +5611,10 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
 
         isGone: function () {
             return this._gone;
+        },
+
+        close: function () {
+            this._onGone();
         },
 
         _createDataset: function () {
@@ -7009,7 +7048,8 @@ ns.modules.define('cloud.dataSyncApi.config', function (provide) {
         oauthLoginPage: 'https://oauth.yandex.ru/authorize?response_type=token&client_id={{ key }}',
         oauthWindowParameters: 'width=600,height=500',
         prefix: 'yandex_data_sync_api_v1',
-        deltaLimit: 100
+        deltaLimit: 100,
+        backgroundSyncInterval: 5000
     });
 });
 ns.modules.define('cloud.dataSyncApi.http', [
@@ -7017,9 +7057,10 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'cloud.client',
     'component.xhr',
     'component.util',
+    'global',
     'vow',
     'cloud.Error'
-], function (provide, config, client, xhr, util, vow, Error) {
+], function (provide, config, client, xhr, util, global, vow, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -7207,6 +7248,16 @@ ns.modules.define('cloud.dataSyncApi.http', [
                     params
                 );
             });
+        },
+
+        subscribe: function (options) {
+            return addAuthorization(options).then(function (params) {
+                return xhr(
+                    config.apiHost + 'v1/data/subscriptions/web?database_ids=' +
+                        encodeURIComponent(options.database_ids.join(',')),
+                    params
+                );
+            });
         }
     });
 });
@@ -7230,6 +7281,311 @@ ns.modules.define('cloud.dataSyncApi.politics', [
             return result;
         }
     });
+});
+ns.modules.define('cloud.dataSyncApi.watcher', [
+    'global',
+    'cloud.dataSyncApi.config',
+    'cloud.dataSyncApi.syncEngine.PushEngine',
+    'cloud.dataSyncApi.syncEngine.PollEngine'
+], function (provide, global, config, PushEngine, PollEngine) {
+    var watcher = {
+            _engine: null,
+
+            _restartTimeout: null,
+
+            _databases: {},
+
+            subscribe: function (database, callback) {
+                var id = database.getContext() + ':' + database.getDatabaseId(),
+                    isNew = false;
+
+                if (!this._databases[id]) {
+                    this._databases[id] = {
+                        database: database,
+                        callbacks: []
+                    };
+                    isNew = true;
+                }
+
+                this._databases[id].callbacks.push(callback);
+
+                if (isNew) {
+                    if (!this._engine) {
+                        this.createEngine();
+                    }
+                    this._engine.addDatabase(database);
+                }
+            },
+
+            unsubscribe: function (database, callback) {
+                var id = database.getContext() + ':' + database.getDatabaseId(),
+                    params = this._databases[id],
+                    isLast = false,
+                    index = params ? params.callbacks.indexOf(callback) : -1;
+
+                if (index != -1) {
+                    params.callbacks.splice(index, 1);
+                    if (!params.callbacks.length) {
+                        delete this._databases[id];
+                        isLast = true;
+                    }
+                }
+
+                if (isLast) {
+                    if (Object.keys(this._databases).length) {
+                        this._engine.removeDatabase(database);
+                    } else {
+                        this._engine.removeAll();
+                        this._engine = null;
+                    }
+                }
+            },
+
+            createEngine: function () {
+                var engineClass = PushEngine.isSupported() ? PushEngine : PollEngine;
+                this._engine = new engineClass({
+                    onUpdate: this._onUpdate.bind(this),
+                    onFail: this._onEngineFail.bind(this)
+                });
+            },
+
+            _onUpdate: function (key, revision) {
+                var db = this._databases[key];
+                if (db.database.getRevision() != revision) {
+                    db.callbacks.slice().forEach(function (callback) {
+                        try {
+                            callback(revision);
+                        } catch (e) {}
+                    });
+                }
+            },
+
+            _onEngineFail: function () {
+                if (!this._restartTimeout) {
+                    this._restartTimeout = global.setTimeout(function () {
+                        this._restartTimeout = null;
+                        this.createEngine(Object.keys(this._databases).map(function (key) {
+                            return this._databases[key].database;
+                        }.bind(this)));
+                    }.bind(this), config.backgroundSyncInterval);
+                }
+            }
+        };
+
+    provide(watcher);
+});
+ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
+    'global',
+    'vow',
+    'component.util',
+    'cloud.dataSyncApi.http',
+    'cloud.Error'
+], function (provide, global, vow, util, http, Error) {
+    var AbstractEngine = function (options) {
+            this._options = options;
+            this._databases = {};
+            this._cancelOnFail = [];
+        };
+
+    AbstractEngine.isSupported = function () {
+        return true;
+    };
+
+    util.defineClass(AbstractEngine, {
+        addDatabase: function (database) {
+            this._databases[this.getDatabaseKey(database)] = {
+                database: database,
+                lastKnownRevision: database.getRevision()
+            };
+            this.restart();
+        },
+
+        removeDatabase: function (database) {
+            delete this._databases[this.getDatabaseKey(database)];
+            this.restart();
+        },
+
+        getDatabases: function () {
+            return this._databases;
+        },
+
+        addFailableCallback: function (callback) {
+            this._cancelOnFail.push(callback);
+        },
+
+        removeFailableCallback: function (callback) {
+            var index = this._cancelOnFail.indexOf(callback);
+            if (index != -1) {
+                this._cancelOnFail.splice(index, 1);
+            }
+        },
+
+        restart: function () {
+            throw new Error('Abstract Method');
+        },
+
+        fail: function (e) {
+            this._databases = [];
+            this._cancelOnFail.forEach(function (callback) {
+                callback.cancel();
+            });
+            this._cancelOnFail = [];
+
+            this._options.onFail(e);
+        },
+
+        updateRevisions: function () {
+            return vow.all(Object.keys(this._databases).map(function (key) {
+                var database = this._databases[key].database,
+                    callback = util.cancelableCallback(function (response) {
+                        if (response.code != 200) {
+                            this.fail(response);
+                        } else {
+                            this.removeFailableCallback(callback);
+                            this.checkDatabaseRevision(key, response.data.revision);
+                        }
+                    }.bind(this));
+
+                this.addFailableCallback(callback);
+                return http.getDatabases({
+                    context: database.getContext(),
+                    database_id: database.getDatabaseId()
+                }).then(callback, this.fail, this);
+            }.bind(this)));
+        },
+
+        checkDatabaseRevision: function (key, revision) {
+            if (this._databases[key].lastKnownRevision != revision) {
+                this._databases[key].lastKnownRevision = revision;
+                this._options.onUpdate(key, revision);
+            }
+        },
+
+        getDatabaseKey: function (database) {
+            return database.getContext() + ':' + database.getDatabaseId();
+        }
+    });
+
+    provide(AbstractEngine);
+});
+ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
+    'global',
+    'component.util',
+    'cloud.dataSyncApi.config',
+    'cloud.dataSyncApi.syncEngine.AbstractEngine'
+], function (provide, global, util, config, AbstractEngine) {
+    var PollEngine = function (options) {
+            PollEngine.superclass.constructor.call(this, options);
+            this._updateTimeout = null;
+        };
+
+    PollEngine.isSupported = function () {
+        return true;
+    };
+
+    util.defineClass(PollEngine, AbstractEngine, {
+        restart: function () {
+            if (this._updateTimeout) {
+                global.clearTimeout(this._updateTimeout);
+                this._updateTimeout = null;
+            }
+
+            this.updateRevisions().then(function () {
+                this._updateTimeout = global.setTimeout(
+                    this.restart.bind(this),
+                    config.backgroundSyncInterval
+                );
+            }, this);
+        },
+
+        fail: function (e) {
+            if (this._updateTimeout) {
+                global.clearTimeout(this._updateTimeout);
+                this._updateTimeout = null;
+            }
+            PushEngine.superclass.fail.call(this, e);
+        }
+    });
+
+    provide(PollEngine);
+});
+ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
+    'global',
+    'component.util',
+    'cloud.dataSyncApi.http',
+    'cloud.dataSyncApi.syncEngine.AbstractEngine',
+    'cloud.Error'
+], function (provide, global, util, http, AbstractEngine, Error) {
+    var PushEngine = function (options) {
+            PushEngine.superclass.constructor.call(this, options);
+            this._getSubscriptionCallback = null;
+        };
+
+    PushEngine.isSupported = function () {
+        return typeof global.WebSocket == 'function';
+    };
+
+    util.defineClass(PushEngine, AbstractEngine, {
+        restart: function () {
+            var ids = Object.keys(this.getDatabases());
+
+            if (this._getSubscriptionCallback) {
+                this.removeFailableCallback(this._getSubscriptionCallback);
+                this._getSubscriptionCallback.cancel();
+            }
+
+            this._getSubscriptionCallback = util.cancelableCallback(function (response) {
+                this.removeFailableCallback(this._getSubscriptionCallback);
+                this._getSubscriptionCallback = null;
+                if (response.code == 200) {
+                    var data = JSON.parse(response.data);
+                    this._setupSocket(data.href);
+                    this.updateRevisions();
+                } else {
+                    this.fail(new Error(response));
+                }
+            }.bind(this));
+
+            this.addFailableCallback(this._getSubscriptionCallback);
+
+            http.subscribe({
+                database_ids: ids
+            }).then(this._getSubscriptionCallback, this._fail, this);
+        },
+
+        fail: function (e) {
+            if (this._ws) {
+                this._ws.onmessage = this._ws.onerror = null;
+                this._ws.close();
+                this._ws = null;
+            }
+            PushEngine.superclass.fail.call(this, e);
+        },
+
+        _setupSocket: function (href) {
+            try {
+                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'wss:'));
+            } catch (e) {
+                this.fail(e);
+            }
+            this._ws.onmessage = this._onPush.bind(this);
+            this._ws.onerror = this.fail.bind(this);
+        },
+
+        _onPush: function (e) {
+            var data = JSON.parse(e.data);
+            if (data.operation == 'datasync_database_changed') {
+                var message = JSON.parse(data.message);
+
+                this.checkDatabaseRevision(
+                    message.context + ':' + message.database_id,
+                    message.revision
+                );
+            }
+        }
+    });
+
+    provide(PushEngine);
 });
 ns.modules.define('global', function (provide) {
     provide(global);
