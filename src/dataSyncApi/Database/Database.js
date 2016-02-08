@@ -3,17 +3,18 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.http',
     'cloud.client',
     'cloud.dataSyncApi.DatasetController',
+    'cloud.dataSyncApi.watcher',
     'cloud.dataSyncApi.Transaction',
     'cloud.dataSyncApi.Operation',
     'cloud.dataSyncApi.politics',
     'cloud.Error',
     'component.util',
-    'vow',
-    'localForage'
+    'vow'
 ], function (provide,
-             config, http, client,
-             DatasetController, Transaction, Operation, politics,
-             Error, util, vow, localForage) {
+    config, http, client,
+    DatasetController, watcher,
+    Transaction, Operation, politics,
+    Error, util, vow) {
         /**
          * @class Класс, представляющий методы для работы с базой данных.
          * Возвращается функцией {@link cloud.dataSyncApi.openDatabase}.
@@ -38,6 +39,10 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             return DatasetController.create(options).then(function (controller) {
                 this._datasetController = controller;
                 this._locked = false;
+                if (options.background_sync || typeof options.background_sync == 'undefined') {
+                    this._watchCallback = this.update.bind(this);
+                    watcher.subscribe(this, this._watchCallback);
+                }
                 return this;
             }, null, this);
         };
@@ -138,6 +143,14 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             return this._executeExclusiveTask(this._explicitUpdate.bind(this));
         },
 
+        close: function () {
+            if (this._options.background_sync || typeof this._options.background_sync == 'undefined') {
+                watcher.unsubscribe(this, this._watchCallback);
+            }
+            this._datasetController.close();
+            this._locked = true;
+        },
+
         _explicitUpdate: function () {
             var oldRevision = this.getRevision();
             return this._datasetController.update({
@@ -206,6 +219,13 @@ ns.modules.define('cloud.dataSyncApi.Database', [
          */
         getDatabaseId: function () {
             return this._id;
+        },
+
+        /**
+         * @returns {String} Контекст БД (app или user).
+         */
+        getContext: function () {
+            return this._context;
         },
 
         /**

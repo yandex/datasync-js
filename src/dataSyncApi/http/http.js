@@ -3,9 +3,10 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'cloud.client',
     'component.xhr',
     'component.util',
+    'global',
     'vow',
     'cloud.Error'
-], function (provide, config, client, xhr, util, vow, Error) {
+], function (provide, config, client, xhr, util, global, vow, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -190,6 +191,16 @@ ns.modules.define('cloud.dataSyncApi.http', [
                     config.apiHost + 'v1/data/' +
                         options.context + '/databases/' +
                         options.database_id + '/deltas',
+                    params
+                );
+            });
+        },
+
+        subscribe: function (options) {
+            return addAuthorization(options).then(function (params) {
+                return xhr(
+                    config.apiHost + 'v1/data/subscriptions/web?database_ids=' +
+                        encodeURIComponent(options.database_ids.join(',')),
                     params
                 );
             });

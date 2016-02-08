@@ -40,6 +40,10 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             return this._gone;
         },
 
+        close: function () {
+            this._onGone();
+        },
+
         _createDataset: function () {
             return http.putDatabase(this._options).then(function (res) {
                 if (res.code != 200 && res.code != 201) {

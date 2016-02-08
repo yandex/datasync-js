@@ -141,6 +141,21 @@ ns.modules.define('component.util', function (provide) {
                 }
 
                 return constructor;
+            },
+
+            cancelableCallback: function (callback) {
+                var canceled = false,
+                    result = function () {
+                        if (!canceled) {
+                            callback.apply(null, [].slice.call(arguments));
+                        }
+                    };
+
+                result.cancel = function () {
+                    canceled = true;
+                };
+
+                return result;
             }
         };
 

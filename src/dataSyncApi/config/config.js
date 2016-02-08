@@ -8,6 +8,7 @@ ns.modules.define('cloud.dataSyncApi.config', function (provide) {
         oauthLoginPage: 'https://oauth.yandex.ru/authorize?response_type=token&client_id={{ key }}',
         oauthWindowParameters: 'width=600,height=500',
         prefix: 'yandex_data_sync_api_v1',
-        deltaLimit: 100
+        deltaLimit: 100,
+        backgroundSyncInterval: 5000
     });
 });

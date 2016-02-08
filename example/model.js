@@ -174,5 +174,13 @@ $.extend(ContactListModel.prototype, {
 
     update: function () {
         return this._database.update();
+    },
+
+    on: function () {
+        this._database.on.apply(this._database, [].slice.call(arguments));
+    },
+
+    off: function () {
+        this._database.off.apply(this._database, [].slice.call(arguments));
     }
 });

@@ -2,6 +2,8 @@ var ContactListView = function (model) {
         this._model = model;
         this._currentValues = null;
         this._numberChanges = [];
+
+        this._model.on('update', this._onUpdate.bind(this));
     };
 
 ContactListView.templates = {
@@ -114,8 +116,6 @@ $.extend(ContactListView.prototype, {
             .on('click', '.update', this._update.bind(this))
             .on('click', '.edit-contact', this._editContact.bind(this))
             .on('click', '.delete-contact', this._deleteContact.bind(this));
-
-        setInterval(this._update.bind(this), 20 * 1000);
     },
 
     _buildHtml: function () {
@@ -159,7 +159,11 @@ $.extend(ContactListView.prototype, {
     },
 
     _update: function () {
-        this._model.update().then(this._buildHtml.bind(this));
+        this._model.update();
+    },
+
+    _onUpdate: function () {
+        this._buildHtml();
     },
 
     _addNewContact: function () {
@@ -281,7 +285,6 @@ $.extend(ContactListView.prototype, {
 
     _submit: function () {
         var success = (function () {
-                this._buildHtml();
                 this._hideRecord();
             }).bind(this),
 
