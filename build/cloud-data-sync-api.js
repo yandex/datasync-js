@@ -7646,12 +7646,15 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
 
         _setupSocket: function (href) {
             try {
-                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'ws:'));
+                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'wss:'));
             } catch (e) {
+                this._ws = null;
                 this.fail(e);
             }
-            this._ws.onmessage = this._onPush.bind(this);
-            this._ws.onerror = this.fail.bind(this);
+            if (this._ws) {
+                this._ws.onmessage = this._onPush.bind(this);
+                this._ws.onerror = this.fail.bind(this);
+            }
         },
 
         _teardownSocket: function () {
