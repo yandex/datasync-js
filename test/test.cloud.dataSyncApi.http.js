@@ -7,8 +7,9 @@ if (typeof XMLHttpRequest == 'undefined') {
 
 ya.modules.define('test.cloud.dataSyncApi.http', [
     'cloud.dataSyncApi.http',
-    'cloud.dataSyncApi.config'
-], function (provide, httpApi, config) {
+    'cloud.dataSyncApi.config',
+    'global'
+], function (provide, httpApi, config, global) {
     var params = typeof process != 'undefined' ?
             Object.keys(process.env).reduce(function (params, key) {
                 if (key.indexOf('npm_config_') == 0) {
@@ -67,59 +68,53 @@ ya.modules.define('test.cloud.dataSyncApi.http', [
     describe('cloud.dataSyncApi.http', function () {
         it('Database creation & deletion', function (done) {
             var fail = function (e) {
-                rawDeleteDatabase(function () {
-                    done(e);
-                });
-            };
+                    rawDeleteDatabase(function () {
+                        done(e);
+                    });
+                };
 
             rawCreateDatabase(getDatabase);
 
             function getDatabase () {
-                httpApi.getDatabases({
-                    context: context,
-                    database_id: name,
-                    token: token,
-                    with_credentials: token ? false : true
-                }).then(function (res) {
-                    expect(res.code).to.be(200);
-                    deleteDatabase();
-                }, fail).fail(fail);
+                global.setTimeout(function () {
+                    httpApi.getDatabases({
+                        context: context,
+                        database_id: name,
+                        token: token,
+                        with_credentials: token ? false : true
+                    }).then(function (res) {
+                        expect(res.code).to.be(200);
+                        deleteDatabase();
+                    }, fail).fail(fail);
+                }, 100);
             }
 
             function deleteDatabase () {
-                httpApi.deleteDatabase({
-                    context: context,
-                    database_id: name,
-                    token: token,
-                    with_credentials: token ? false : true
-                }).then(function (res) {
-                    expect(res.code).to.be(204);
-                    checkDatabase();
-                }, fail).fail(fail);
-            }
-
-            function checkDatabase () {
-                httpApi.getDatabases({
-                    context: context,
-                    database_id: name,
-                    token: token,
-                    with_credentials: token ? false : true
-                }).then(function (res) {
-                    expect(res.code).to.be(404);
-                    putDatabase();
-                }, fail).fail(fail);
+                global.setTimeout(function () {
+                    httpApi.deleteDatabase({
+                        context: context,
+                        database_id: name,
+                        token: token,
+                        with_credentials: token ? false : true
+                    }).then(function (res) {
+                        expect(res.code).to.be(204);
+                        putDatabase();
+                    }, fail).fail(fail);
+                }, 100);
             }
 
             function putDatabase () {
-                httpApi.putDatabase({
-                    context: context,
-                    database_id: name,
-                    token: token,
-                    with_credentials: token ? false : true
-                }).then(function (res) {
-                    expect(res.code).to.be(201);
-                    rawDeleteDatabase(done)
-                }, fail).fail(fail);
+                global.setTimeout(function () {
+                    httpApi.putDatabase({
+                        context: context,
+                        database_id: name,
+                        token: token,
+                        with_credentials: token ? false : true
+                    }).then(function (res) {
+                        expect(res.code).to.be(201);
+                        rawDeleteDatabase(done)
+                    }, fail).fail(fail);
+                }, 100);
             }
         });
 

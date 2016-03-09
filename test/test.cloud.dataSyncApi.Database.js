@@ -38,7 +38,8 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
             database_id: name,
             context: context,
             token: token,
-            use_client_storage: use_client_storage
+            use_client_storage: use_client_storage,
+            create_if_not_exists: true
         },
 
         transaction,
@@ -61,7 +62,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                 return function (e) {
                     vow.all([
                         http.deleteDatabase(defaultParams),
-                        cache.clear
+                        cache.clear()
                     ]).then(function () {
                         done(e || new Error());
                     }, function (e) {
@@ -76,6 +77,11 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
             };
 
         this.timeout(30000);
+
+        after(function () {
+            Database.closeAll();
+            return http.deleteDatabase(defaultParams);
+        });
 
         it('constructor', function (done) {
             var fail = getFailer(done);

@@ -2,9 +2,11 @@ var expect = expect || require('expect.js'),
     ya = ya || require('../build/cloud-data-sync-api.js');
 
 ya.modules.define('test.util', [
+    'vow',
+    'global',
     'cloud.dataSyncApi.Dataset',
     'cloud.dataSyncApi.Database'
-], function (provide, Dataset, Database) {
+], function (provide, vow, global, Dataset, Database) {
     var util = {
             snapshotJson: {
                 revision: 3,
@@ -97,11 +99,34 @@ ya.modules.define('test.util', [
             swapMethod: function (object, key, newValue) {
                 var old = object[key];
                 object[key] = function () {
-                    return newValue.apply(this, [].concat(old, [].slice.call(arguments)));
+                    return newValue.apply(null, [].slice.call(arguments));
                 };
                 return function () {
                     object[key] = old;
                 };
+            },
+
+            extractParams: function () {
+                return typeof global.process != 'undefined' ?
+                    Object.keys(global.process.env).reduce(function (params, key) {
+                       if (key.indexOf('npm_config_') == 0) {
+                           params[key.slice('npm_config_'.length)] = global.process.env[key];
+                       }
+                       return params;
+                    }, {}) :
+                    (global.location.search || '').replace(/^\?/, '').split('&').reduce(function (params, param) {
+                       var pair = param.split('=', 2);
+                       params[pair[0]] = pair[1];
+                       return params;
+                    }, {});
+            },
+
+            timeouted: function (data, timeout) {
+                var deferred = vow.defer();
+                global.setTimeout(function () {
+                    deferred.resolve(data);
+                }, timeout || 0);
+                return deferred.promise();
             }
         };
 

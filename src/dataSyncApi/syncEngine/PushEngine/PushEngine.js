@@ -15,20 +15,21 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
     };
 
     util.defineClass(PushEngine, AbstractEngine, {
+        removeAll: function () {
+            this._teardownSocket();
+            PushEngine.superclass.removeAll.call(this);
+        },
+
         restart: function () {
+            this._teardownSocket();
+            PushEngine.superclass.restart.call(this);
+
             var ids = Object.keys(this.getDatabases());
-
-            if (this._getSubscriptionCallback) {
-                this.removeFailableCallback(this._getSubscriptionCallback);
-                this._getSubscriptionCallback.cancel();
-            }
-
             this._getSubscriptionCallback = util.cancelableCallback(function (response) {
                 this.removeFailableCallback(this._getSubscriptionCallback);
                 this._getSubscriptionCallback = null;
                 if (response.code == 200) {
-                    var data = JSON.parse(response.data);
-                    this._setupSocket(data.href);
+                    this._setupSocket(response.data.href);
                     this.updateRevisions();
                 } else {
                     this.fail(new Error(response));
@@ -43,22 +44,26 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
         },
 
         fail: function (e) {
-            if (this._ws) {
-                this._ws.onmessage = this._ws.onerror = null;
-                this._ws.close();
-                this._ws = null;
-            }
+            this._teardownSocket();
             PushEngine.superclass.fail.call(this, e);
         },
 
         _setupSocket: function (href) {
             try {
-                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'wss:'));
+                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'ws:'));
             } catch (e) {
                 this.fail(e);
             }
             this._ws.onmessage = this._onPush.bind(this);
             this._ws.onerror = this.fail.bind(this);
+        },
+
+        _teardownSocket: function () {
+            if (this._ws) {
+                this._ws.onmessage = this._ws.onerror = null;
+                this._ws.close();
+                this._ws = null;
+            }
         },
 
         _onPush: function (e) {

@@ -16,21 +16,17 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                     isNew = false;
 
                 if (!this._databases[id]) {
+                    isNew = true;
+                }
+
+                if (isNew) {
+                    this.getEngine().addDatabase(database);
                     this._databases[id] = {
                         database: database,
                         callbacks: []
                     };
-                    isNew = true;
                 }
-
                 this._databases[id].callbacks.push(callback);
-
-                if (isNew) {
-                    if (!this._engine) {
-                        this.createEngine();
-                    }
-                    this._engine.addDatabase(database);
-                }
             },
 
             unsubscribe: function (database, callback) {
@@ -48,21 +44,50 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                 }
 
                 if (isLast) {
-                    if (Object.keys(this._databases).length) {
-                        this._engine.removeDatabase(database);
-                    } else {
-                        this._engine.removeAll();
-                        this._engine = null;
-                    }
+                    this.getEngine().removeDatabase(database);
                 }
             },
 
-            createEngine: function () {
+            getEngine: function () {
+                if (!this._engine) {
+                    this.setupEngine();
+                }
+                return this._engine;
+            },
+
+            setupEngine: function () {
+                if (this._restartTimeout) {
+                    global.clearTimeout(this._restartTimeout);
+                    this._restartTimeout = null;
+                }
+
+                this._engine = this.createEngine(
+                    this._onUpdate.bind(this),
+                    this._onEngineFail.bind(this)
+                );
+
+                var databases = this._databases,
+                    keys = Object.keys(databases);
+                if (keys.length) {
+                    this._engine.addDatabase(keys.map(function (key) {
+                        return databases[key].database;
+                    }));
+                }
+            },
+
+            createEngine: function (onUpdate, onEngineFail) {
                 var engineClass = PushEngine.isSupported() ? PushEngine : PollEngine;
-                this._engine = new engineClass({
-                    onUpdate: this._onUpdate.bind(this),
-                    onFail: this._onEngineFail.bind(this)
+                return new engineClass({
+                    onUpdate: onUpdate,
+                    onFail: onEngineFail
                 });
+            },
+
+            teardownEngine: function () {
+                if (this._engine) {
+                    this._engine.removeAll();
+                    this._engine = null;
+                }
             },
 
             _onUpdate: function (key, revision) {
@@ -77,12 +102,11 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
             },
 
             _onEngineFail: function () {
+                this.teardownEngine();
                 if (!this._restartTimeout) {
                     this._restartTimeout = global.setTimeout(function () {
                         this._restartTimeout = null;
-                        this.createEngine(Object.keys(this._databases).map(function (key) {
-                            return this._databases[key].database;
-                        }.bind(this)));
+                        this.setupEngine();
                     }.bind(this), config.backgroundSyncInterval);
                 }
             }

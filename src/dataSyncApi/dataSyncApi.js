@@ -358,6 +358,19 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
         });
     },
 
+    /**
+     * Закрывает все текущие открытые соединения со всеми
+     * базами данных.
+     * @returns {vow.Promise} Объект-promise, который будет
+     * подтверждён по завершении операции.
+     */
+    closeAllDatabases: function () {
+        return this._require(['cloud.dataSyncApi.Database']).then(function (Database) {
+            Database.closeAll();
+            return null;
+        });
+    },
+
     _require: function (modules) {
         var deferred = ns.vow.defer();
 

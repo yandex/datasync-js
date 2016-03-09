@@ -53,6 +53,11 @@ ya.modules.define('test.cloud.dataSyncApi', ['cloud.dataSyncApi.http'], function
 
         this.timeout(10000);
 
+        after(function () {
+            ya.cloud.dataSyncApi.closeAllDatabases();
+            return http.deleteDatabase(defaultParams);
+        });
+
         it('create', function (done) {
             var fail = getFailer(done),
                 rev;

@@ -197,9 +197,11 @@ ns.modules.define('cloud.dataSyncApi.http', [
         },
 
         subscribe: function (options) {
-            return addAuthorization(options).then(function (params) {
+            return addAuthorization(options, {
+                parse: true
+            }).then(function (params) {
                 return xhr(
-                    config.apiHost + 'v1/data/subscriptions/web?database_ids=' +
+                    config.apiHost + 'v1/data/subscriptions/web?databases_ids=' +
                         encodeURIComponent(options.database_ids.join(',')),
                     params
                 );

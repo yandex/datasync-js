@@ -14,6 +14,14 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
     };
 
     util.defineClass(PollEngine, AbstractEngine, {
+        removeAll: function () {
+            if (this._updateTimeout) {
+                global.clearTimeout(this._updateTimeout);
+                this._updateTimeout = null;
+            }
+            PollEngine.superclass.removeAll.call(this);
+        },
+
         restart: function () {
             if (this._updateTimeout) {
                 global.clearTimeout(this._updateTimeout);
@@ -23,7 +31,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
             this.updateRevisions().then(function () {
                 this._updateTimeout = global.setTimeout(
                     this.restart.bind(this),
-                    config.backgroundSyncInterval
+                    this.getOptions().backgroundSyncInterval || config.backgroundSyncInterval
                 );
             }, this);
         },

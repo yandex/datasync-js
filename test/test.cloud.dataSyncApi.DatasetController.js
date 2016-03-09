@@ -92,9 +92,14 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
 
         this.timeout(10000);
 
+        after(function () {
+            Database.closeAll();
+            return http.deleteDatabase(defaultParams);
+        });
+
         it('Init from cache', function (done) {
             var undoSnapshot = util.swapMethod(http, 'getSnapshot', function () {
-                    throw new Error();
+                    throw new Error('getSnapshot must not be called');
                 }),
                 undoDeltas = util.swapMethod(http, 'getDeltas', function () {
                     return vow.resolve({

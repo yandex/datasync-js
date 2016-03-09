@@ -7,6 +7,7 @@
     <div id="mocha"></div>
     <script src="../node_modules/mocha/mocha.js"></script>
     <script src="../node_modules/expect.js/index.js"></script>
+    <script src="../node_modules/sinon/pkg/sinon.js"></script>
     <script>mocha.setup('bdd')</script>
     <script src="../build/cloud-data-sync-api.js"></script>
     <!-- Tests -->
@@ -17,6 +18,8 @@
     <script src="test.cloud.dataSyncApi.Transaction.js"></script>
     <script src="test.cloud.dataSyncApi.Dataset.js"></script>
     <script src="test.cloud.dataSyncApi.DatasetController.js"></script>
+    <script src="test.cloud.dataSyncApi.syncEngine.js"></script>
+    <script src="test.cloud.dataSyncApi.watcher.js"></script>
     <script src="test.cloud.dataSyncApi.Database.js"></script>
     <script src="test.cloud.dataSyncApi.cache.js"></script>
     <script src="test.cloud.dataSyncApi.js"></script>
@@ -29,6 +32,8 @@
             'test.cloud.dataSyncApi.Transaction',
             'test.cloud.dataSyncApi.Dataset',
             'test.cloud.dataSyncApi.DatasetController',
+            'test.cloud.dataSyncApi.watcher',
+            'test.cloud.dataSyncApi.syncEngine',
             'test.cloud.dataSyncApi.Database',
             'test.cloud.dataSyncApi.cache',
             'test.cloud.dataSyncApi',

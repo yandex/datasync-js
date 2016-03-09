@@ -15,6 +15,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     DatasetController, watcher,
     Transaction, Operation, politics,
     Error, util, vow) {
+
+    var databases = [];
         /**
          * @class Класс, представляющий методы для работы с базой данных.
          * Возвращается функцией {@link cloud.dataSyncApi.openDatabase}.
@@ -31,10 +33,13 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             this._pendingCallbacks = [];
             this._possiblyMissedDelta = null;
             this._missedDelta = null;
+            this._datasetController = null;
 
             this._listeners = {
                 update: []
             };
+
+            databases.push(this);
 
             return DatasetController.create(options).then(function (controller) {
                 this._datasetController = controller;
@@ -46,6 +51,12 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 return this;
             }, null, this);
         };
+
+    Database.closeAll = function () {
+        databases.slice().forEach(function (database) {
+            database.close();
+        });
+    };
 
     /**
      * Событие обновления базы данных.
@@ -144,11 +155,20 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         close: function () {
-            if (this._options.background_sync || typeof this._options.background_sync == 'undefined') {
+            if (this._watchCallback) {
                 watcher.unsubscribe(this, this._watchCallback);
+                this._watchCallback = null;
             }
-            this._datasetController.close();
+            if (this._datasetController) {
+                this._datasetController.close();
+                this._datasetController = null;
+            }
             this._locked = true;
+
+            var index = databases.indexOf(this);
+            if (index != -1) {
+                databases.splice(index, 1);
+            }
         },
 
         _explicitUpdate: function () {

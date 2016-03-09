@@ -6,9 +6,9 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'cloud.Error'
 ], function (provide, global, vow, util, http, Error) {
     var AbstractEngine = function (options) {
-            this._options = options;
+            this._options = options || {};
             this._databases = {};
-            this._cancelOnFail = [];
+            this._cancelableCallbacks = [];
         };
 
     AbstractEngine.isSupported = function () {
@@ -16,17 +16,28 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     };
 
     util.defineClass(AbstractEngine, {
-        addDatabase: function (database) {
-            this._databases[this.getDatabaseKey(database)] = {
-                database: database,
-                lastKnownRevision: database.getRevision()
-            };
+        addDatabase: function (databases) {
+            databases = [].concat.call([], databases);
+            databases.forEach(function (database) {
+                this._databases[this.getDatabaseKey(database)] = {
+                    database: database,
+                    lastKnownRevision: database.getRevision()
+                };
+            }, this);
             this.restart();
         },
 
-        removeDatabase: function (database) {
-            delete this._databases[this.getDatabaseKey(database)];
+        removeDatabase: function (databases) {
+            databases = [].concat.call([], databases);
+            databases.forEach(function (database) {
+                delete this._databases[this.getDatabaseKey(database)];
+            }, this);
             this.restart();
+        },
+
+        removeAll: function () {
+            this._databases = {};
+            this._cancelCallbacks();
         },
 
         getDatabases: function () {
@@ -34,27 +45,23 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         addFailableCallback: function (callback) {
-            this._cancelOnFail.push(callback);
+            this._cancelableCallbacks.push(callback);
         },
 
         removeFailableCallback: function (callback) {
-            var index = this._cancelOnFail.indexOf(callback);
+            var index = this._cancelableCallbacks.indexOf(callback);
             if (index != -1) {
-                this._cancelOnFail.splice(index, 1);
+                this._cancelableCallbacks.splice(index, 1);
             }
         },
 
         restart: function () {
-            throw new Error('Abstract Method');
+            this._cancelCallbacks();
         },
 
         fail: function (e) {
             this._databases = [];
-            this._cancelOnFail.forEach(function (callback) {
-                callback.cancel();
-            });
-            this._cancelOnFail = [];
-
+            this._cancelCallbacks();
             this._options.onFail(e);
         },
 
@@ -79,7 +86,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         checkDatabaseRevision: function (key, revision) {
-            if (this._databases[key].lastKnownRevision != revision) {
+            if (Number(this._databases[key].lastKnownRevision) < Number(revision)) {
                 this._databases[key].lastKnownRevision = revision;
                 this._options.onUpdate(key, revision);
             }
@@ -87,6 +94,17 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
 
         getDatabaseKey: function (database) {
             return database.getContext() + ':' + database.getDatabaseId();
+        },
+
+        getOptions: function () {
+            return this._options;
+        },
+
+        _cancelCallbacks: function () {
+            this._cancelableCallbacks.slice().forEach(function (callback) {
+                callback.cancel();
+            });
+            this._cancelableCallbacks = [];
         }
     });
 

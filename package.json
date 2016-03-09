@@ -18,7 +18,8 @@
         "del": "0.1.x",
         "streamqueue": "0.1.x",
         "xmlhttprequest": "1.x.x",
-        "mocha": "2.x.x"
+        "mocha": "2.x.x",
+        "sinon": "1.x.x"
     },
     "engine": "node >= 0.10.28",
     "scripts": {

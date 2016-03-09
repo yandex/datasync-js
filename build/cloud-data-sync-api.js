@@ -4411,6 +4411,19 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
         });
     },
 
+    /**
+     * Закрывает все текущие открытые соединения со всеми
+     * базами данных.
+     * @returns {vow.Promise} Объект-promise, который будет
+     * подтверждён по завершении операции.
+     */
+    closeAllDatabases: function () {
+        return this._require(['cloud.dataSyncApi.Database']).then(function (Database) {
+            Database.closeAll();
+            return null;
+        });
+    },
+
     _require: function (modules) {
         var deferred = ns.vow.defer();
 
@@ -4802,6 +4815,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     DatasetController, watcher,
     Transaction, Operation, politics,
     Error, util, vow) {
+
+    var databases = [];
         /**
          * @class Класс, представляющий методы для работы с базой данных.
          * Возвращается функцией {@link cloud.dataSyncApi.openDatabase}.
@@ -4818,10 +4833,13 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             this._pendingCallbacks = [];
             this._possiblyMissedDelta = null;
             this._missedDelta = null;
+            this._datasetController = null;
 
             this._listeners = {
                 update: []
             };
+
+            databases.push(this);
 
             return DatasetController.create(options).then(function (controller) {
                 this._datasetController = controller;
@@ -4833,6 +4851,12 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 return this;
             }, null, this);
         };
+
+    Database.closeAll = function () {
+        databases.slice().forEach(function (database) {
+            database.close();
+        });
+    };
 
     /**
      * Событие обновления базы данных.
@@ -4931,11 +4955,20 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         close: function () {
-            if (this._options.background_sync || typeof this._options.background_sync == 'undefined') {
+            if (this._watchCallback) {
                 watcher.unsubscribe(this, this._watchCallback);
+                this._watchCallback = null;
             }
-            this._datasetController.close();
+            if (this._datasetController) {
+                this._datasetController.close();
+                this._datasetController = null;
+            }
             this._locked = true;
+
+            var index = databases.indexOf(this);
+            if (index != -1) {
+                databases.splice(index, 1);
+            }
         },
 
         _explicitUpdate: function () {
@@ -7251,9 +7284,11 @@ ns.modules.define('cloud.dataSyncApi.http', [
         },
 
         subscribe: function (options) {
-            return addAuthorization(options).then(function (params) {
+            return addAuthorization(options, {
+                parse: true
+            }).then(function (params) {
                 return xhr(
-                    config.apiHost + 'v1/data/subscriptions/web?database_ids=' +
+                    config.apiHost + 'v1/data/subscriptions/web?databases_ids=' +
                         encodeURIComponent(options.database_ids.join(',')),
                     params
                 );
@@ -7300,21 +7335,17 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                     isNew = false;
 
                 if (!this._databases[id]) {
+                    isNew = true;
+                }
+
+                if (isNew) {
+                    this.getEngine().addDatabase(database);
                     this._databases[id] = {
                         database: database,
                         callbacks: []
                     };
-                    isNew = true;
                 }
-
                 this._databases[id].callbacks.push(callback);
-
-                if (isNew) {
-                    if (!this._engine) {
-                        this.createEngine();
-                    }
-                    this._engine.addDatabase(database);
-                }
             },
 
             unsubscribe: function (database, callback) {
@@ -7332,21 +7363,50 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                 }
 
                 if (isLast) {
-                    if (Object.keys(this._databases).length) {
-                        this._engine.removeDatabase(database);
-                    } else {
-                        this._engine.removeAll();
-                        this._engine = null;
-                    }
+                    this.getEngine().removeDatabase(database);
                 }
             },
 
-            createEngine: function () {
+            getEngine: function () {
+                if (!this._engine) {
+                    this.setupEngine();
+                }
+                return this._engine;
+            },
+
+            setupEngine: function () {
+                if (this._restartTimeout) {
+                    global.clearTimeout(this._restartTimeout);
+                    this._restartTimeout = null;
+                }
+
+                this._engine = this.createEngine(
+                    this._onUpdate.bind(this),
+                    this._onEngineFail.bind(this)
+                );
+
+                var databases = this._databases,
+                    keys = Object.keys(databases);
+                if (keys.length) {
+                    this._engine.addDatabase(keys.map(function (key) {
+                        return databases[key].database;
+                    }));
+                }
+            },
+
+            createEngine: function (onUpdate, onEngineFail) {
                 var engineClass = PushEngine.isSupported() ? PushEngine : PollEngine;
-                this._engine = new engineClass({
-                    onUpdate: this._onUpdate.bind(this),
-                    onFail: this._onEngineFail.bind(this)
+                return new engineClass({
+                    onUpdate: onUpdate,
+                    onFail: onEngineFail
                 });
+            },
+
+            teardownEngine: function () {
+                if (this._engine) {
+                    this._engine.removeAll();
+                    this._engine = null;
+                }
             },
 
             _onUpdate: function (key, revision) {
@@ -7361,12 +7421,11 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
             },
 
             _onEngineFail: function () {
+                this.teardownEngine();
                 if (!this._restartTimeout) {
                     this._restartTimeout = global.setTimeout(function () {
                         this._restartTimeout = null;
-                        this.createEngine(Object.keys(this._databases).map(function (key) {
-                            return this._databases[key].database;
-                        }.bind(this)));
+                        this.setupEngine();
                     }.bind(this), config.backgroundSyncInterval);
                 }
             }
@@ -7382,9 +7441,9 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'cloud.Error'
 ], function (provide, global, vow, util, http, Error) {
     var AbstractEngine = function (options) {
-            this._options = options;
+            this._options = options || {};
             this._databases = {};
-            this._cancelOnFail = [];
+            this._cancelableCallbacks = [];
         };
 
     AbstractEngine.isSupported = function () {
@@ -7392,17 +7451,28 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     };
 
     util.defineClass(AbstractEngine, {
-        addDatabase: function (database) {
-            this._databases[this.getDatabaseKey(database)] = {
-                database: database,
-                lastKnownRevision: database.getRevision()
-            };
+        addDatabase: function (databases) {
+            databases = [].concat.call([], databases);
+            databases.forEach(function (database) {
+                this._databases[this.getDatabaseKey(database)] = {
+                    database: database,
+                    lastKnownRevision: database.getRevision()
+                };
+            }, this);
             this.restart();
         },
 
-        removeDatabase: function (database) {
-            delete this._databases[this.getDatabaseKey(database)];
+        removeDatabase: function (databases) {
+            databases = [].concat.call([], databases);
+            databases.forEach(function (database) {
+                delete this._databases[this.getDatabaseKey(database)];
+            }, this);
             this.restart();
+        },
+
+        removeAll: function () {
+            this._databases = {};
+            this._cancelCallbacks();
         },
 
         getDatabases: function () {
@@ -7410,27 +7480,23 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         addFailableCallback: function (callback) {
-            this._cancelOnFail.push(callback);
+            this._cancelableCallbacks.push(callback);
         },
 
         removeFailableCallback: function (callback) {
-            var index = this._cancelOnFail.indexOf(callback);
+            var index = this._cancelableCallbacks.indexOf(callback);
             if (index != -1) {
-                this._cancelOnFail.splice(index, 1);
+                this._cancelableCallbacks.splice(index, 1);
             }
         },
 
         restart: function () {
-            throw new Error('Abstract Method');
+            this._cancelCallbacks();
         },
 
         fail: function (e) {
             this._databases = [];
-            this._cancelOnFail.forEach(function (callback) {
-                callback.cancel();
-            });
-            this._cancelOnFail = [];
-
+            this._cancelCallbacks();
             this._options.onFail(e);
         },
 
@@ -7455,7 +7521,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         checkDatabaseRevision: function (key, revision) {
-            if (this._databases[key].lastKnownRevision != revision) {
+            if (Number(this._databases[key].lastKnownRevision) < Number(revision)) {
                 this._databases[key].lastKnownRevision = revision;
                 this._options.onUpdate(key, revision);
             }
@@ -7463,6 +7529,17 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
 
         getDatabaseKey: function (database) {
             return database.getContext() + ':' + database.getDatabaseId();
+        },
+
+        getOptions: function () {
+            return this._options;
+        },
+
+        _cancelCallbacks: function () {
+            this._cancelableCallbacks.slice().forEach(function (callback) {
+                callback.cancel();
+            });
+            this._cancelableCallbacks = [];
         }
     });
 
@@ -7484,6 +7561,14 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
     };
 
     util.defineClass(PollEngine, AbstractEngine, {
+        removeAll: function () {
+            if (this._updateTimeout) {
+                global.clearTimeout(this._updateTimeout);
+                this._updateTimeout = null;
+            }
+            PollEngine.superclass.removeAll.call(this);
+        },
+
         restart: function () {
             if (this._updateTimeout) {
                 global.clearTimeout(this._updateTimeout);
@@ -7493,7 +7578,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
             this.updateRevisions().then(function () {
                 this._updateTimeout = global.setTimeout(
                     this.restart.bind(this),
-                    config.backgroundSyncInterval
+                    this.getOptions().backgroundSyncInterval || config.backgroundSyncInterval
                 );
             }, this);
         },
@@ -7526,20 +7611,21 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
     };
 
     util.defineClass(PushEngine, AbstractEngine, {
+        removeAll: function () {
+            this._teardownSocket();
+            PushEngine.superclass.removeAll.call(this);
+        },
+
         restart: function () {
+            this._teardownSocket();
+            PushEngine.superclass.restart.call(this);
+
             var ids = Object.keys(this.getDatabases());
-
-            if (this._getSubscriptionCallback) {
-                this.removeFailableCallback(this._getSubscriptionCallback);
-                this._getSubscriptionCallback.cancel();
-            }
-
             this._getSubscriptionCallback = util.cancelableCallback(function (response) {
                 this.removeFailableCallback(this._getSubscriptionCallback);
                 this._getSubscriptionCallback = null;
                 if (response.code == 200) {
-                    var data = JSON.parse(response.data);
-                    this._setupSocket(data.href);
+                    this._setupSocket(response.data.href);
                     this.updateRevisions();
                 } else {
                     this.fail(new Error(response));
@@ -7554,22 +7640,26 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
         },
 
         fail: function (e) {
-            if (this._ws) {
-                this._ws.onmessage = this._ws.onerror = null;
-                this._ws.close();
-                this._ws = null;
-            }
+            this._teardownSocket();
             PushEngine.superclass.fail.call(this, e);
         },
 
         _setupSocket: function (href) {
             try {
-                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'wss:'));
+                this._ws = new global.WebSocket(href.replace(/^http(s)?\:/, 'ws:'));
             } catch (e) {
                 this.fail(e);
             }
             this._ws.onmessage = this._onPush.bind(this);
             this._ws.onerror = this.fail.bind(this);
+        },
+
+        _teardownSocket: function () {
+            if (this._ws) {
+                this._ws.onmessage = this._ws.onerror = null;
+                this._ws.close();
+                this._ws = null;
+            }
         },
 
         _onPush: function (e) {
