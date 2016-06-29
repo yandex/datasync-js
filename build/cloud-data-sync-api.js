@@ -3926,131 +3926,6 @@ ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
     provide(CloudError);
 });
 
-var Client = function () {
-    this._initialized = false;
-    this._key = null;
-    this._token = null;
-};
-
-/**
- * Инициализирует сессию, авторизует пользователя.
- * @name cloud.client.initialize
- * @function
- * @param {Object} options Опции.
- * @param {String} [options.key] Публичный ключ приложения.
- * @param {String} [options.token] OAuth-токен. Если
- * не передан, будет показано окно с диалогом авторизации;
- * в этом случае параметр key обязателен.
- * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
- * при успешной аутентификации, либо отклонён в противном случае.
- * @static
- */
-Client.prototype.initialize = function (options) {
-    var deferred = ns.vow.defer();
-
-    ns.modules.require([
-        'cloud.dataSyncApi.config',
-        'component.util',
-        'cloud.Error',
-        'vow',
-        'global'
-    ], (function (config, util, Error, vow, global) {
-        if (!options) {
-            deferred.reject(new Error({
-                message: '`options` Parameter Required'
-            }));
-        } else if (!options.key && !options.token && !options.with_credentials) {
-            deferred.reject(new Error({
-                message: 'Either `options.key` or `options.token` Parameter Required'
-            }));
-        } else {
-            if (options.token) {
-                this._token = options.token;
-                this._initialized = true;
-                deferred.resolve();
-            } else if (options.with_credentials) {
-                this._withCredentials = true;
-                this._initialized = true;
-                deferred.resolve();
-            } else {
-                var oauthWindow = global.open(
-                    config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
-                    'oauth',
-                    config.oauthWindowParameters
-                );
-
-                if (oauthWindow) {
-                    var intervalId = global.setInterval(function () {
-                        if (oauthWindow.closed) {
-                            global.clearInterval(intervalId);
-                            deferred.reject(new Error({
-                                code: 401
-                            }));
-                        } else {
-                            try {
-                                var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
-                                if (match) {
-                                    this._token = match[1];
-                                    this._initialized = true;
-                                    oauthWindow.close();
-                                    global.clearInterval(intervalId);
-                                    deferred.resolve(this._token);
-                                }
-                            } catch (e) {}
-                        }
-                    }.bind(this), 100);
-                } else {
-                    deferred.reject(new Error({
-                        code: 401
-                    }));
-                }
-            }
-        }
-    }).bind(this));
-
-    return deferred.promise();
-};
-
-/**
- * @name cloud.client.isInitialized
- * @function
- * @returns {Boolean} true - сессия инициализирована, клиент
- * аутентифицирован, false в противном случае.
- * @static
- */
-Client.prototype.isInitialized = function () {
-    return this._initialized;
-};
-
-// #12 — оставлено для обратной совместимости.
-Client.prototype.isInitiaized = Client.prototype.isInitialized
-
-/**
- * @name cloud.client.getToken
- * @function
- * @returns {String|null} OAuth-токен или null, если сессия
- * не была инициализирована.
- * @static
- */
-Client.prototype.getToken = function () {
-    return this._token;
-};
-
-Client.prototype.withCredentials = function () {
-    return this._withCredentials;
-}
-
-ns.cloud.client = new Client();
-
-ns.modules.define('cloud.client', [], function (provide) {
-    /**
-     * @class OAuth-клиент, позволяющий аутентифицировать пользователя.
-     * @name cloud.client
-     * @static
-     */
-    provide(ns.cloud.client);
-});
-
 /**
  * @class Основной неймпспейс для работы с Data API Диска.
  * @name cloud.dataSyncApi
@@ -4080,6 +3955,9 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {Boolean} [options.use_client_storage = false] true — закэшировать
      * снапшот базы в клиентском браузере (используя indexedDb или сходные технологии),
      * false — не кэшировать.
+     * @param {String} [options.collection_id] Фильтр по имени коллекции. При установке
+     * этого фильтра база будет содержать только объекты с указанным collection_id, все
+     * объекты с отличным от collection_id идентификатором коллекции будут пропускаться.
      * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён экземпляром
      * класса {@link cloud.dataSyncApi.Database} при успешном открытии базы данных, либо отклонён
      * с одной из следующих ошибок:
@@ -4469,283 +4347,129 @@ ns.modules.define('cloud.dataSyncApi', [], function (provide) {
     provide(ns.cloud.dataSyncApi);
 });
 
-ns.modules.define('component.util', function (provide) {
-    var util = {
-            /**
-             * @ignore
-             * Базовая функция, реализующая наследование в JavaScript.
-             * Реализует наследование прототипа без исполнения конструктора родителя.
-             *
-             * К дочернему классу добавляется поле 'superclass', указывающее на
-             * прототип родительского класса, и поле 'constructor', которое указывает на конструктор класса.
-             * Через поле 'constructor' объекта 'superclass' можно обратится к конструктору родительского класса.
-             * @name component.util.augment
-             * @function
-             * @static
-             * @param {Function} ChildClass Дочерний класс.
-             * @param {Function} ParentClass Родительский класс.
-             * @param {Object} override Набор дополнительных полей и функций,
-             * которые будут приписаны к прототипу дочернего класса.
-             * @returns {Object} Прототип дочернего класса.
-             * @example
-             *
-             * // Родительский класс
-             * var ParentClass = function (param1, param2) {
-             *     this.param1 = param1;
-             *     this.param2 = param2;
-             * };
-             *
-             * ParentClass.prototype = {
-             *     foo: function () {
-             *         alert('Parent!');
-             *     }
-             * };
-             * // Дочерний класс
-             * var ChildClass = function (param1, param2, param3) {
-             *     // Вызываем конструктор родителя
-             *     ChildClass.superclass.constructor.call(this, param1, param2);
-             *     this._param3 = param3;
-             * }
-             *
-             * // наследуем ChildClass от ParentClass
-             * augment(ChildClass, ParentClass, {
-             *     // переопределяем в наследнике метод foo
-             *     foo: function () {
-             *         // Вызываем метод родительского класса
-             *         ChildClass.superclass.foo.call(this);
-             *         alert('Child!');
-             *     }
-             * });
-             */
-            augment: function (ChildClass, ParentClass, override) {
-                ChildClass.prototype = (Object.create || function (obj) {
-                    function F () {
-                    }
+var Client = function () {
+    this._initialized = false;
+    this._key = null;
+    this._token = null;
+};
 
-                    F.prototype = obj;
-                    return new F();
-                })(ParentClass.prototype);
+/**
+ * Инициализирует сессию, авторизует пользователя.
+ * @name cloud.client.initialize
+ * @function
+ * @param {Object} options Опции.
+ * @param {String} [options.key] Публичный ключ приложения.
+ * @param {String} [options.token] OAuth-токен. Если
+ * не передан, будет показано окно с диалогом авторизации;
+ * в этом случае параметр key обязателен.
+ * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+ * при успешной аутентификации, либо отклонён в противном случае.
+ * @static
+ */
+Client.prototype.initialize = function (options) {
+    var deferred = ns.vow.defer();
 
-                ChildClass.prototype.constructor = ChildClass;
-                ChildClass.superclass = ParentClass.prototype;
-                ChildClass.superclass.constructor = ParentClass;
+    ns.modules.require([
+        'cloud.dataSyncApi.config',
+        'component.util',
+        'cloud.Error',
+        'vow',
+        'global'
+    ], (function (config, util, Error, vow, global) {
+        if (!options) {
+            deferred.reject(new Error({
+                message: '`options` Parameter Required'
+            }));
+        } else if (!options.key && !options.token && !options.with_credentials) {
+            deferred.reject(new Error({
+                message: 'Either `options.key` or `options.token` Parameter Required'
+            }));
+        } else {
+            if (options.token) {
+                this._token = options.token;
+                this._initialized = true;
+                deferred.resolve();
+            } else if (options.with_credentials) {
+                this._withCredentials = true;
+                this._initialized = true;
+                deferred.resolve();
+            } else {
+                var oauthWindow = global.open(
+                    config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
+                    'oauth',
+                    config.oauthWindowParameters
+                );
 
-                if (override) {
-                    util.extend(ChildClass.prototype, override);
-                }
-                return ChildClass.prototype;
-            },
-            /**
-             * @ignore
-             * Функция, копирующая свойства из одного или нескольких
-             * JavaScript-объектов в другой JavaScript-объект.
-             * @param {Object} target Целевой JavaScript-объект. Будет модифицирован
-             * в результате работы функции.
-             * @param {Object} source JavaScript-объект - источник. Все его свойства
-             * будут скопированы. Источников может быть несколько (функция может иметь
-             * произвольное число параметров), данные копируются справа налево (последний
-             * аргумент имеет наивысший приоритет при копировании).
-             * @name component.util.extend
-             * @function
-             * @static
-             *
-             * @example
-             * var options = extend({
-             *      prop1: 'a',
-             *      prop2: 'b'
-             * }, {
-             *      prop2: 'c',
-             *      prop3: 'd'
-             * }, {
-             *      prop3: 'e'
-             * });
-             * // Получим в итоге: {
-             * //     prop1: 'a',
-             * //     prop2: 'c',
-             * //     prop3: 'e'
-             * // }
-             */
-            extend: function (target) {
-                for (var i = 1, l = arguments.length; i < l; i++) {
-                    var arg = arguments[i];
-                    if (arg) {
-                        var keys = Object.keys(arg);
-                        for (var j = 0, k = keys.length; j < k; j++) {
-                            target[keys[j]] = arg[keys[j]];
+                if (oauthWindow) {
+                    var intervalId = global.setInterval(function () {
+                        if (oauthWindow.closed) {
+                            global.clearInterval(intervalId);
+                            deferred.reject(new Error({
+                                code: 401
+                            }));
+                        } else {
+                            try {
+                                var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
+                                if (match) {
+                                    this._token = match[1];
+                                    this._initialized = true;
+                                    oauthWindow.close();
+                                    global.clearInterval(intervalId);
+                                    deferred.resolve(this._token);
+                                }
+                            } catch (e) {}
                         }
-                    }
-                }
-                return target;
-            },
-            /**
-             * @ignore
-             * <p>Базовая функция, реализующая объявление классов.
-             * При помощи этой функции можно объявить новый класс, указать у этого класса набор методов и
-             * произвести наследование от другого класса.</p>
-             * <p>К дочернему классу приписывается поле superclass, указывающее на
-             * прототип родительского класса.
-             * Через поле 'constructor' объекта 'superclass' можно обратится
-             * к конструктору родительского класса.</p>
-             * @name component.util.defineClass
-             * @function
-             * @static
-             * @param {Function} constructor Конструктор класса.
-             * @param {Function} [parentClass] Родительский класс,
-             * от которого необходимо произвести наследование. Этот аргумент может быть пропущен.
-             * @param {Object} [override] Набор дополнительных полей и функций,
-             * которые будут приписаны к прототипу класса. Источников может быть несколько (функция может иметь
-             * произвольное число параметров), данные копируются справа налево (последний
-             * аргумент имеет наивысший приоритет при копировании).
-             * @returns {Function} Класс.
-             */
-            defineClass: function (constructor) {
-                var argIndex = 1,
-                    baseConstructor = typeof arguments[argIndex] == "function" ? arguments[argIndex++] : null;
-
-                if (baseConstructor) {
-                    util.augment(constructor, baseConstructor);
-                }
-
-                var argLength = arguments.length;
-                while (argIndex < argLength) {
-                    util.extend(constructor.prototype, arguments[argIndex++]);
-                }
-
-                return constructor;
-            },
-
-            cancelableCallback: function (callback) {
-                var canceled = false,
-                    result = function () {
-                        if (!canceled) {
-                            callback.apply(null, [].slice.call(arguments));
-                        }
-                    };
-
-                result.cancel = function () {
-                    canceled = true;
-                };
-
-                return result;
-            }
-        };
-
-    provide(util);
-});
-ns.modules.define('component.xhr', [
-    'global',
-    'vow',
-    'cloud.Error',
-    'cloud.dataSyncApi.config'
-], function (provide, global, vow, Error, config) {
-    var XMLHttpRequest = global.XMLHttpRequest,
-        parseHeaders = function (headers) {
-            return headers.split('\u000d\u000a').reduce(function (result, line) {
-                var parts = line.split('\u003a\u0020');
-                if (parts.length == 2) {
-                    result[parts[0].toLowerCase()] = parts[1].trim();
-                }
-                return result;
-            }, {});
-        };
-    /**
-     * @ignore
-     * Шлёт запрос посредством кросс-доменного XMLHttpRequest.
-     * @name component.util.xhr
-     * @function
-     * @statuc
-     * @param {String} baseUrl Базовый URL
-     * @param {Object} [options] Опции.
-     * @param {String} [options.method = 'GET'] HTTP-метод.
-     * @param {Object} [options.queryParams] Дополнительные query-параметры.
-     * @param {Object} [options.data] Данные.
-     * @param {Object} [options.headers] Дополнительные заголовки.
-     * @param {Boolean} [options.parse = false] true — автоматически
-     * применить JSON.parse к ответу сервера, false - не применять.
-     * @param {Boolean} [options.parseResponseHeaders = true] true —
-     * автоматически разобрать заголовки ответа и сформировать JSON-объект,
-     * false — оставить строкой.
-     * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
-     * полученными данными, либо отклонён с ошибкой.
-     */
-    provide(function (baseUrl, options) {
-        options = options || {};
-        if (options.queryParams) {
-            baseUrl += (baseUrl.indexOf('?') == -1 ? '?' : '&') +
-                Object.keys(options.queryParams).map(function (key) {
-                    return key + '=' + global.encodeURIComponent(options.queryParams[key]);
-                }).join('&');
-        }
-
-        var deferred = vow.defer(),
-            xhr = new XMLHttpRequest(),
-            headers = options.headers || {},
-            method = options.method || 'GET';
-
-        if (method != 'GET' && !headers['Content-Type']) {
-            headers['Content-Type'] = 'application/json';
-        }
-        if (!headers['X-Requested-With']) {
-            headers['X-Requested-With'] = 'XMLHttpRequest';
-        }
-
-        xhr.onload = function () {
-            var result = {
-                    code: this.status,
-                    data: this.responseText,
-                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
-                        this.getAllResponseHeaders() :
-                        parseHeaders(this.getAllResponseHeaders())
-                };
-
-            if (options.parse) {
-                try {
-                    result.data = JSON.parse(result.data);
-                } catch (e) {
+                    }.bind(this), 100);
+                } else {
                     deferred.reject(new Error({
-                        message: 'JSON Parse Error ' + result.data
+                        code: 401
                     }));
                 }
             }
-            deferred.resolve(result);
-        };
-
-        xhr.onerror = function () {
-            deferred.reject(new Error({
-                code: 500
-            }));
-        };
-
-        xhr.open(method, baseUrl, true);
-
-        Object.keys(headers).forEach(function (key) {
-            xhr.setRequestHeader(key, headers[key]);
-        });
-        if (options.withCredentials) {
-            xhr.withCredentials = true;
         }
+    }).bind(this));
 
-        if (typeof options.data != 'undefined') {
-            xhr.send(typeof options.data == 'string' ?
-                options.data :
-                JSON.stringify(options.data)
-            );
-        } else {
-            xhr.send();
-        }
+    return deferred.promise();
+};
 
-        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
-            if (e instanceof vow.TimedOutError) {
-                throw new Error({
-                    code: 500,
-                    message: 'Timeout Exceeded'
-                });
-            } else {
-                throw e;
-            }
-        });
-    });
+/**
+ * @name cloud.client.isInitialized
+ * @function
+ * @returns {Boolean} true - сессия инициализирована, клиент
+ * аутентифицирован, false в противном случае.
+ * @static
+ */
+Client.prototype.isInitialized = function () {
+    return this._initialized;
+};
+
+// #12 — оставлено для обратной совместимости.
+Client.prototype.isInitiaized = Client.prototype.isInitialized
+
+/**
+ * @name cloud.client.getToken
+ * @function
+ * @returns {String|null} OAuth-токен или null, если сессия
+ * не была инициализирована.
+ * @static
+ */
+Client.prototype.getToken = function () {
+    return this._token;
+};
+
+Client.prototype.withCredentials = function () {
+    return this._withCredentials;
+}
+
+ns.cloud.client = new Client();
+
+ns.modules.define('cloud.client', [], function (provide) {
+    /**
+     * @class OAuth-клиент, позволяющий аутентифицировать пользователя.
+     * @name cloud.client
+     * @static
+     */
+    provide(ns.cloud.client);
 });
 
 ns.modules.define('cloud.dataSyncApi.Conflict', [
@@ -4834,6 +4558,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             this._possiblyMissedDelta = null;
             this._missedDelta = null;
             this._datasetController = null;
+            this._collectionId = options.collection_id;
 
             this._listeners = {
                 update: []
@@ -5057,7 +4782,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 this,
                 (function (parameters, politics) {
                     return this._executeExclusiveTask(this._patch.bind(this, parameters, politics));
-                }).bind(this)
+                }).bind(this),
+                this._collectionId
             );
         },
 
@@ -5162,7 +4888,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         /**
-         * @param {String} collection_id Идентификатор коллекции.
+         * @param {String} [collection_id] Идентификатор коллекции. Необязателен,
+         * если задан фильтр по коллекции.
          * @param {String} record_id Идентификатор записи.
          * @returns {cloud.dataSyncApi.Record} Запись.
          */
@@ -5255,14 +4982,41 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
     'cloud.Error',
     'component.util'
 ], function (provide, Record, Operation, FieldOperation, Conflict, Error, util) {
-    var Dataset = function (revision, records) {
-            var index = this._index = {};
+    var Dataset = function (revision, records, parameters) {
+            var index = this._index = {},
+                collectionId = this._collectionId = parameters && parameters.collection_id,
+                collectionPolicy = parameters && parameters.collection_policy || 'restrict';
+
             this._revision = Number(revision);
             this._revisionHistory = [];
+
             this._records = records.map(function (record) {
                 if (!(record instanceof Record)) {
+                    if (collectionId && !record.collection_id) {
+                        record = util.extend({
+                            collection_id: collectionId
+                        }, record);
+                    }
                     record = new Record(record);
                 }
+                return record;
+            });
+
+            if (collectionId) {
+                this._records = this._records.filter(function (record) {
+                    if (record.getCollectionId() != collectionId) {
+                        if (collectionPolicy == 'restrict') {
+                            throw new Error({
+                                message: '`collection_id` Must Match Current Filter'
+                            });
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            this._records.forEach(function (record) {
                 var collection_id = record.getCollectionId(),
                     record_id = record.getRecordId();
                 if (!index[collection_id]) {
@@ -5270,7 +5024,7 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                 }
                 if (index[collection_id][record_id]) {
                     throw new Error ({
-                        message: 'Record with `collection_id` and `record_id` provided already exists',
+                        message: 'Record with `collection_id` and `record_id` Provided Already Exists',
                         collection_id: collection_id,
                         record_id: record_id
                     });
@@ -5282,12 +5036,13 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         };
 
     Dataset.json = {
-        deserialize: function (json) {
+        deserialize: function (json, parameters) {
             return new Dataset(
                 json.revision,
                 json.records.items.map(function (item) {
                     return Record.json.deserialize(item);
-                })
+                }),
+                parameters
             );
         },
 
@@ -5312,6 +5067,18 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
     util.defineClass(Dataset, {
         getRecord: function (collection_id, record_id) {
+            if (this._collectionId) {
+                if (!record_id) {
+                    record_id = collection_id;
+                    collection_id = this._collectionId;
+                } else {
+                    if (collection_id != this._collectionId) {
+                        throw new Error({
+                            message: '`collection_id` Parameter Must Match Collection Filter'
+                        });
+                    }
+                }
+            }
             if (!collection_id) {
                 throw new Error({
                     message: '`collection_id` Parameter Required'
@@ -5331,6 +5098,10 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
         getLength: function () {
             return this._records.length;
+        },
+
+        getCollectionId: function () {
+            return this._collectionId;
         },
 
         iterator: function (collection_id) {
@@ -5360,7 +5131,8 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         applyDeltas: function (deltas) {
             var index = this._index,
                 revisionHistory = this._revisionHistory,
-                revision = this._revision;
+                revision = this._revision,
+                collectionIdFilter = this._collectionId;
 
             deltas.forEach(function (delta) {
                 var alteredRecords = {};
@@ -5375,28 +5147,30 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                     var collection_id = change.collection_id,
                         record_id = change.record_id;
 
-                    if (!alteredRecords[collection_id]) {
-                        alteredRecords[collection_id] = {};
-                    }
-                    alteredRecords[collection_id][record_id] = true;
+                    if (!collectionIdFilter || collection_id == collectionIdFilter) {
+                        if (!alteredRecords[collection_id]) {
+                            alteredRecords[collection_id] = {};
+                        }
+                        alteredRecords[collection_id][record_id] = true;
 
-                    switch (change.change_type) {
-                        case 'insert':
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(change, true);
-                            break;
-                        case 'delete':
-                            delete index[collection_id][record_id];
-                            break;
-                        case 'update':
-                            var record = index[collection_id][record_id];
-                            change.changes.forEach(function (fieldChange) {
-                                record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
-                            });
-                            break;
+                        switch (change.change_type) {
+                            case 'insert':
+                            case 'set':
+                                if (!index[collection_id]) {
+                                    index[collection_id] = {};
+                                }
+                                index[collection_id][record_id] = Record.json.deserialize(change, true);
+                                break;
+                            case 'delete':
+                                delete index[collection_id][record_id];
+                                break;
+                            case 'update':
+                                var record = index[collection_id][record_id];
+                                change.changes.forEach(function (fieldChange) {
+                                    record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
+                                });
+                                break;
+                        }
                     }
                 });
 
@@ -5421,7 +5195,7 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         },
 
         ifModifiedSince: function (options) {
-            var collection_id = options.collection_id,
+            var collection_id = options.collection_id || this._collectionId,
                 record_id = options.record_id,
                 revision = options.revision,
                 position = this._locateRevision(revision);
@@ -5451,108 +5225,111 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         dryRun: function (revision, operations) {
             var conflicts = [],
                 index = copyIndex(this._index),
-                originalIndex = this._index;
+                originalIndex = this._index,
+                collectionIdFilter = this._collectionId;
 
             operations.forEach(function (operation, i) {
                 var collection_id = operation.getCollectionId(),
                     record_id = operation.getRecordId();
 
-                if (this.ifModifiedSince({
-                    collection_id: collection_id,
-                    record_id: record_id,
-                    revision: revision
-                })) {
-                    conflicts.push({
-                        index: i,
-                        conflict: new Conflict({
-                            type: 'both_modified',
-                            operation: operation
-                        })
-                    });
-                } else {
-                    switch (operation.getType()) {
-                        case 'insert':
-                            if (index[collection_id] && index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'record_already_exists',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
+                if (!collectionIdFilter || collection_id == collectionIdFilter) {
+                    if (this.ifModifiedSince({
+                            collection_id: collection_id,
+                            record_id: record_id,
+                            revision: revision
+                        })) {
+                        conflicts.push({
+                            index: i,
+                            conflict: new Conflict({
+                                type: 'both_modified',
+                                operation: operation
+                            })
+                        });
+                    } else {
+                        switch (operation.getType()) {
+                            case 'insert':
+                                if (index[collection_id] && index[collection_id][record_id]) {
+                                    conflicts.push({
+                                        index: i,
+                                        conflict: new Conflict({
+                                            type: 'record_already_exists',
+                                            operation: operation
+                                        })
+                                    });
+                                } else {
+                                    if (!index[collection_id]) {
+                                        index[collection_id] = {};
+                                    }
+                                    index[collection_id][record_id] = Record.json.deserialize(
+                                        Operation.json.serialize(operation), true
+                                    );
+                                }
+                                break;
+                            case 'set':
                                 if (!index[collection_id]) {
                                     index[collection_id] = {};
                                 }
                                 index[collection_id][record_id] = Record.json.deserialize(
                                     Operation.json.serialize(operation), true
                                 );
-                            }
-                            break;
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(
-                                Operation.json.serialize(operation), true
-                            );
-                            break;
-                        case 'delete':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'delete_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                delete index[collection_id][record_id];
-                            }
-                            break;
-                        case 'update':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'update_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                var record = index[collection_id][record_id],
-                                    fieldChangeConflicts = [];
-
-                                if (record === true) {
-                                    record = originalIndex[collection_id][record_id].copy();
-                                }
-
-                                operation.getFieldOperations().forEach(function (fieldOperation, index) {
-                                    var error = record.dryRun(fieldOperation);
-                                    if (error) {
-                                        fieldChangeConflicts.push({
-                                            type: error,
-                                            index: index
-                                        });
-                                    } else {
-                                        record.applyFieldOperation(fieldOperation);
-                                    }
-                                });
-
-                                if (fieldChangeConflicts.length) {
+                                break;
+                            case 'delete':
+                                if (!index[collection_id] || !index[collection_id][record_id]) {
                                     conflicts.push({
                                         index: i,
                                         conflict: new Conflict({
-                                            type: 'invalid_field_change',
-                                            operation: operation,
-                                            field_change_conflicts: fieldChangeConflicts
+                                            type: 'delete_non_existent_record',
+                                            operation: operation
                                         })
                                     });
                                 } else {
-                                    index[collection_id][record_id] = record;
+                                    delete index[collection_id][record_id];
                                 }
-                            }
-                            break;
+                                break;
+                            case 'update':
+                                if (!index[collection_id] || !index[collection_id][record_id]) {
+                                    conflicts.push({
+                                        index: i,
+                                        conflict: new Conflict({
+                                            type: 'update_non_existent_record',
+                                            operation: operation
+                                        })
+                                    });
+                                } else {
+                                    var record = index[collection_id][record_id],
+                                        fieldChangeConflicts = [];
+
+                                    if (record === true) {
+                                        record = originalIndex[collection_id][record_id].copy();
+                                    }
+
+                                    operation.getFieldOperations().forEach(function (fieldOperation, index) {
+                                        var error = record.dryRun(fieldOperation);
+                                        if (error) {
+                                            fieldChangeConflicts.push({
+                                                type: error,
+                                                index: index
+                                            });
+                                        } else {
+                                            record.applyFieldOperation(fieldOperation);
+                                        }
+                                    });
+
+                                    if (fieldChangeConflicts.length) {
+                                        conflicts.push({
+                                            index: i,
+                                            conflict: new Conflict({
+                                                type: 'invalid_field_change',
+                                                operation: operation,
+                                                field_change_conflicts: fieldChangeConflicts
+                                            })
+                                        });
+                                    } else {
+                                        index[collection_id][record_id] = record;
+                                    }
+                                }
+                                break;
+                        }
                     }
                 }
             }, this);
@@ -5627,7 +5404,6 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             this._gone = false;
             this._updatePromise = null;
             this._dataset = null;
-            this._prefix = this._options.context + '_';
             return this._createDataset().then(function () {
                 return this;
             }, null, this);
@@ -5667,7 +5443,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                 handle = this._databaseHandle = metadata.handle;
 
             if (handle && options.use_client_storage) {
-                return cache.getDataset(options.context, handle).then(function (dataset) {
+                return cache.getDataset(options.context, handle, options.collection_id).then(function (dataset) {
                     return this._initDataset(dataset, {
                         need_update: true
                     });
@@ -5682,7 +5458,11 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         _getHttpSnapshot: function () {
             return http.getSnapshot(this._options).then(function (res) {
                 if (res.code == 200) {
-                    return this._initDataset(Dataset.json.deserialize(res.data));
+                    return this._initDataset(Dataset.json.deserialize(
+                        res.data, {
+                            collection_id: this._options.collection_id
+                        }
+                    ));
                 } else {
                     throw new Error({
                         code: res.code
@@ -6294,12 +6074,13 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @see cloud.dataSyncApi.Database.createTransaction
          * @name cloud.dataSyncApi.Transaction
          */
-    var Transaction = function (database, patchCallback) {
+    var Transaction = function (database, patchCallback, collectionId) {
             this._database = database;
             this._patchCallback = patchCallback;
             this._deltaId = 'ya_cloud_data_js_api_1_' + Math.random().toString();
             this._baseRevision = database.getRevision();
             this._operations = [];
+            this._collectionId = collectionId;
         };
 
     util.defineClass(Transaction, /** @lends cloud.dataSyncApi.Transaction.prototype */ {
@@ -6311,8 +6092,20 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         addOperations: function (operations) {
-            [].push.apply(this._operations, [].concat(operations).map(function (operation) {
-                return operation instanceof Operation ? operation : new Operation(operation);
+            var collectionId = this._collectionId;
+            this._operations = this._operations.concat([].concat(operations).map(function (operation) {
+                if (!(operation instanceof Operation)) {
+                    if (collectionId && !operation.collectionId) {
+                        operation = util.extend({
+                            collection_id: collectionId
+                        }, operation);
+                    }
+                    operation = new Operation(operation);
+                }
+                if (collectionId && operation.getCollectionId() != collectionId) {
+                    throw new Error('`collection_id` Parameter Value Must Match Current Filter');
+                }
+                return operation;
             }));
             return this;
         },
@@ -6381,8 +6174,9 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         insertRecords: function (records) {
+            var defaultCollectionId = this._collectionId;
             return this.addOperations([].concat(records).map(function (record) {
-                var options = castOperationOptions('insert', record);
+                var options = castOperationOptions('insert', record, defaultCollectionId);
 
                 if (record instanceof Record) {
                     options.field_operations = record.getFieldIds().map(function (key) {
@@ -6414,8 +6208,9 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         deleteRecords: function (records) {
+            var defaultCollectionId = this._collectionId;
             return this.addOperations([].concat(records).map(function (record) {
-                return new Operation(castOperationOptions('delete', record));
+                return new Operation(castOperationOptions('delete', record, defaultCollectionId));
             }));
         },
 
@@ -6429,7 +6224,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         setRecordFields: function (record, fields) {
-            var options = castOperationOptions('set', record);
+            var options = castOperationOptions('set', record, this._collectionId);
 
             if (Array.isArray(fields)) {
                 options.field_operations = fields;
@@ -6457,7 +6252,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         updateRecordFields: function (record, fields) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             if (Array.isArray(fields)) {
                 options.field_operations = fields;
@@ -6496,7 +6291,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         insertRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -6525,7 +6320,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         setRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -6552,7 +6347,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         moveRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -6578,7 +6373,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         deleteRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -6592,7 +6387,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
         }
     });
 
-    function castOperationOptions (type, record) {
+    function castOperationOptions (type, record, defaultCollectionId) {
         var options = {
                 type: type
             };
@@ -6601,8 +6396,12 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
             options.collection_id = record.getCollectionId();
             options.record_id = record.getRecordId();
         } else {
-            options.collection_id = record.collection_id;
+            options.collection_id = record.collection_id || defaultCollectionId;
             options.record_id = record.record_id;
+        }
+
+        if (defaultCollectionId && options.collection_id != defaultCollectionId) {
+            throw new Error('`collection_id` Parameter Must Match Current Filter');
         }
 
         return options;
@@ -6993,81 +6792,94 @@ ns.modules.define('cloud.dataSyncApi.cache', [
     });
 
     var cache = {
-            getDatasetKey: function (context, handle) {
-                return 'dataset_' + context + '_' + handle;
+            getDatasetKey: function (context, handle, collectionId) {
+                if (collectionId) {
+                    return 'dataset_' + context + '_' + handle + '|' + collectionId;
+                } else {
+                    return 'dataset_' + context + '_' + handle;
+                }
             },
 
-            getDataset: function (context, handle) {
-                var deferred = vow.defer();
-
-                localForage.getItem(
-                    this.getDatasetKey(context, handle),
-                    function (error, data) {
-                        if (error) {
-                            deferred.reject(error);
-                        } else {
-                            try {
-                                data = Dataset.json.deserialize(
-                                    JSON.parse(data)
+            getDataset: function (context, handle, collectionId) {
+                if (collectionId) {
+                    return getDatasetFromStorage(
+                        this.getDatasetKey(context, handle, collectionId),
+                        collectionId
+                    ).then(
+                        null,
+                        function (e) {
+                            if (e.code == 404) {
+                                return getDatasetFromStorage(
+                                    this.getDatasetKey(context, handle),
+                                    collectionId
                                 );
-                            } catch (e) {
-                                data = null;
-                                // Something went wrong, cache is corrupted
-                                cache.clear().always(function () {
-                                    deferred.reject(new Error({
-                                        code: 500
-                                    }));
-                                });
+                            } else {
+                                throw e;
                             }
+                        },
+                        this
+                    );
 
-                        if (data)
-                            deferred.resolve(data);
-                        }
-                    }
-                );
-
-                return deferred.promise();
+                } else {
+                    return getDatasetFromStorage(
+                        this.getDatasetKey(context, handle)
+                    );
+                }
             },
 
             saveDataset: function (context, handle, dataset) {
                 return this.saveItem(
-                    this.getDatasetKey(context, handle),
+                    this.getDatasetKey(context, handle, dataset.getCollectionId()),
                     JSON.stringify(Dataset.json.serialize(dataset))
                 );
             },
 
             saveItem: function (key, value) {
-                var deferred = vow.defer();
-
-                localForage.setItem(key, value, function (error) {
-                    if (error) {
-                        cache.clear().always(function () {
-                            deferred.reject(new Error({
+                return localForage.setItem(key, value).fail(function () {
+                        return cache.clear().always(function () {
+                            return vow.reject(new Error({
                                 code: 500
                             }));
                         });
-                    } else {
-                        deferred.resolve();
-                    }
                 });
-
-                return deferred.promise();
             },
 
             clear: function () {
-                var deferred = vow.defer();
-
-                localForage.clear(function (e) {
-                    if (e) {
-                        deferred.reject(e);
-                    } else {
-                        deferred.resolve();
-                    }
-                });
-
-                return deferred.promise();
+                return localForage.clear();
             }
         };
+
+    function getDatasetFromStorage (key, collectionId) {
+        var parameters = collectionId ? {
+                collection_id: collectionId,
+                collection_policy: 'skip'
+            } : null;
+
+        return localForage.getItem(key).then(function (data) {
+            if (!data) {
+                return vow.reject(new Error({
+                    code: 404
+                }));
+            } else {
+                try {
+                    data = Dataset.json.deserialize(
+                        JSON.parse(data),
+                        parameters
+                    );
+                } catch (e) {
+                    data = null;
+                    // Something went wrong, cache is corrupted
+                    return cache.clear().always(function () {
+                        return vow.reject(new Error({
+                            code: 500
+                        }));
+                    });
+                }
+            }
+
+            return data;
+        });
+    }
 
     provide (cache);
 });
@@ -7433,6 +7245,285 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
 
     provide(watcher);
 });
+ns.modules.define('component.util', function (provide) {
+    var util = {
+            /**
+             * @ignore
+             * Базовая функция, реализующая наследование в JavaScript.
+             * Реализует наследование прототипа без исполнения конструктора родителя.
+             *
+             * К дочернему классу добавляется поле 'superclass', указывающее на
+             * прототип родительского класса, и поле 'constructor', которое указывает на конструктор класса.
+             * Через поле 'constructor' объекта 'superclass' можно обратится к конструктору родительского класса.
+             * @name component.util.augment
+             * @function
+             * @static
+             * @param {Function} ChildClass Дочерний класс.
+             * @param {Function} ParentClass Родительский класс.
+             * @param {Object} override Набор дополнительных полей и функций,
+             * которые будут приписаны к прототипу дочернего класса.
+             * @returns {Object} Прототип дочернего класса.
+             * @example
+             *
+             * // Родительский класс
+             * var ParentClass = function (param1, param2) {
+             *     this.param1 = param1;
+             *     this.param2 = param2;
+             * };
+             *
+             * ParentClass.prototype = {
+             *     foo: function () {
+             *         alert('Parent!');
+             *     }
+             * };
+             * // Дочерний класс
+             * var ChildClass = function (param1, param2, param3) {
+             *     // Вызываем конструктор родителя
+             *     ChildClass.superclass.constructor.call(this, param1, param2);
+             *     this._param3 = param3;
+             * }
+             *
+             * // наследуем ChildClass от ParentClass
+             * augment(ChildClass, ParentClass, {
+             *     // переопределяем в наследнике метод foo
+             *     foo: function () {
+             *         // Вызываем метод родительского класса
+             *         ChildClass.superclass.foo.call(this);
+             *         alert('Child!');
+             *     }
+             * });
+             */
+            augment: function (ChildClass, ParentClass, override) {
+                ChildClass.prototype = (Object.create || function (obj) {
+                    function F () {
+                    }
+
+                    F.prototype = obj;
+                    return new F();
+                })(ParentClass.prototype);
+
+                ChildClass.prototype.constructor = ChildClass;
+                ChildClass.superclass = ParentClass.prototype;
+                ChildClass.superclass.constructor = ParentClass;
+
+                if (override) {
+                    util.extend(ChildClass.prototype, override);
+                }
+                return ChildClass.prototype;
+            },
+            /**
+             * @ignore
+             * Функция, копирующая свойства из одного или нескольких
+             * JavaScript-объектов в другой JavaScript-объект.
+             * @param {Object} target Целевой JavaScript-объект. Будет модифицирован
+             * в результате работы функции.
+             * @param {Object} source JavaScript-объект - источник. Все его свойства
+             * будут скопированы. Источников может быть несколько (функция может иметь
+             * произвольное число параметров), данные копируются справа налево (последний
+             * аргумент имеет наивысший приоритет при копировании).
+             * @name component.util.extend
+             * @function
+             * @static
+             *
+             * @example
+             * var options = extend({
+             *      prop1: 'a',
+             *      prop2: 'b'
+             * }, {
+             *      prop2: 'c',
+             *      prop3: 'd'
+             * }, {
+             *      prop3: 'e'
+             * });
+             * // Получим в итоге: {
+             * //     prop1: 'a',
+             * //     prop2: 'c',
+             * //     prop3: 'e'
+             * // }
+             */
+            extend: function (target) {
+                for (var i = 1, l = arguments.length; i < l; i++) {
+                    var arg = arguments[i];
+                    if (arg) {
+                        var keys = Object.keys(arg);
+                        for (var j = 0, k = keys.length; j < k; j++) {
+                            target[keys[j]] = arg[keys[j]];
+                        }
+                    }
+                }
+                return target;
+            },
+            /**
+             * @ignore
+             * <p>Базовая функция, реализующая объявление классов.
+             * При помощи этой функции можно объявить новый класс, указать у этого класса набор методов и
+             * произвести наследование от другого класса.</p>
+             * <p>К дочернему классу приписывается поле superclass, указывающее на
+             * прототип родительского класса.
+             * Через поле 'constructor' объекта 'superclass' можно обратится
+             * к конструктору родительского класса.</p>
+             * @name component.util.defineClass
+             * @function
+             * @static
+             * @param {Function} constructor Конструктор класса.
+             * @param {Function} [parentClass] Родительский класс,
+             * от которого необходимо произвести наследование. Этот аргумент может быть пропущен.
+             * @param {Object} [override] Набор дополнительных полей и функций,
+             * которые будут приписаны к прототипу класса. Источников может быть несколько (функция может иметь
+             * произвольное число параметров), данные копируются справа налево (последний
+             * аргумент имеет наивысший приоритет при копировании).
+             * @returns {Function} Класс.
+             */
+            defineClass: function (constructor) {
+                var argIndex = 1,
+                    baseConstructor = typeof arguments[argIndex] == "function" ? arguments[argIndex++] : null;
+
+                if (baseConstructor) {
+                    util.augment(constructor, baseConstructor);
+                }
+
+                var argLength = arguments.length;
+                while (argIndex < argLength) {
+                    util.extend(constructor.prototype, arguments[argIndex++]);
+                }
+
+                return constructor;
+            },
+
+            cancelableCallback: function (callback) {
+                var canceled = false,
+                    result = function () {
+                        if (!canceled) {
+                            callback.apply(null, [].slice.call(arguments));
+                        }
+                    };
+
+                result.cancel = function () {
+                    canceled = true;
+                };
+
+                return result;
+            }
+        };
+
+    provide(util);
+});
+ns.modules.define('component.xhr', [
+    'global',
+    'vow',
+    'cloud.Error',
+    'cloud.dataSyncApi.config'
+], function (provide, global, vow, Error, config) {
+    var XMLHttpRequest = global.XMLHttpRequest,
+        parseHeaders = function (headers) {
+            return headers.split('\u000d\u000a').reduce(function (result, line) {
+                var parts = line.split('\u003a\u0020');
+                if (parts.length == 2) {
+                    result[parts[0].toLowerCase()] = parts[1].trim();
+                }
+                return result;
+            }, {});
+        };
+    /**
+     * @ignore
+     * Шлёт запрос посредством кросс-доменного XMLHttpRequest.
+     * @name component.util.xhr
+     * @function
+     * @statuc
+     * @param {String} baseUrl Базовый URL
+     * @param {Object} [options] Опции.
+     * @param {String} [options.method = 'GET'] HTTP-метод.
+     * @param {Object} [options.queryParams] Дополнительные query-параметры.
+     * @param {Object} [options.data] Данные.
+     * @param {Object} [options.headers] Дополнительные заголовки.
+     * @param {Boolean} [options.parse = false] true — автоматически
+     * применить JSON.parse к ответу сервера, false - не применять.
+     * @param {Boolean} [options.parseResponseHeaders = true] true —
+     * автоматически разобрать заголовки ответа и сформировать JSON-объект,
+     * false — оставить строкой.
+     * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
+     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * полученными данными, либо отклонён с ошибкой.
+     */
+    provide(function (baseUrl, options) {
+        options = options || {};
+        if (options.queryParams) {
+            baseUrl += (baseUrl.indexOf('?') == -1 ? '?' : '&') +
+                Object.keys(options.queryParams).map(function (key) {
+                    return key + '=' + global.encodeURIComponent(options.queryParams[key]);
+                }).join('&');
+        }
+
+        var deferred = vow.defer(),
+            xhr = new XMLHttpRequest(),
+            headers = options.headers || {},
+            method = options.method || 'GET';
+
+        if (method != 'GET' && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
+        if (!headers['X-Requested-With']) {
+            headers['X-Requested-With'] = 'XMLHttpRequest';
+        }
+
+        xhr.onload = function () {
+            var result = {
+                    code: this.status,
+                    data: this.responseText,
+                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
+                        this.getAllResponseHeaders() :
+                        parseHeaders(this.getAllResponseHeaders())
+                };
+
+            if (options.parse) {
+                try {
+                    result.data = JSON.parse(result.data);
+                } catch (e) {
+                    deferred.reject(new Error({
+                        message: 'JSON Parse Error ' + result.data
+                    }));
+                }
+            }
+            deferred.resolve(result);
+        };
+
+        xhr.onerror = function () {
+            deferred.reject(new Error({
+                code: 500
+            }));
+        };
+
+        xhr.open(method, baseUrl, true);
+
+        Object.keys(headers).forEach(function (key) {
+            xhr.setRequestHeader(key, headers[key]);
+        });
+        if (options.withCredentials) {
+            xhr.withCredentials = true;
+        }
+
+        if (typeof options.data != 'undefined') {
+            xhr.send(typeof options.data == 'string' ?
+                options.data :
+                JSON.stringify(options.data)
+            );
+        } else {
+            xhr.send();
+        }
+
+        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
+            if (e instanceof vow.TimedOutError) {
+                throw new Error({
+                    code: 500,
+                    message: 'Timeout Exceeded'
+                });
+            } else {
+                throw e;
+            }
+        });
+    });
+});
+
 ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'global',
     'vow',
