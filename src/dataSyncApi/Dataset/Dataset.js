@@ -6,14 +6,41 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
     'cloud.Error',
     'component.util'
 ], function (provide, Record, Operation, FieldOperation, Conflict, Error, util) {
-    var Dataset = function (revision, records) {
-            var index = this._index = {};
+    var Dataset = function (revision, records, parameters) {
+            var index = this._index = {},
+                collectionId = this._collectionId = parameters && parameters.collection_id,
+                collectionPolicy = parameters && parameters.collection_policy || 'restrict';
+
             this._revision = Number(revision);
             this._revisionHistory = [];
+
             this._records = records.map(function (record) {
                 if (!(record instanceof Record)) {
+                    if (collectionId && !record.collection_id) {
+                        record = util.extend({
+                            collection_id: collectionId
+                        }, record);
+                    }
                     record = new Record(record);
                 }
+                return record;
+            });
+
+            if (collectionId) {
+                this._records = this._records.filter(function (record) {
+                    if (record.getCollectionId() != collectionId) {
+                        if (collectionPolicy == 'restrict') {
+                            throw new Error({
+                                message: '`collection_id` Must Match Current Filter'
+                            });
+                        }
+                        return false;
+                    }
+                    return true;
+                });
+            }
+
+            this._records.forEach(function (record) {
                 var collection_id = record.getCollectionId(),
                     record_id = record.getRecordId();
                 if (!index[collection_id]) {
@@ -21,7 +48,7 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                 }
                 if (index[collection_id][record_id]) {
                     throw new Error ({
-                        message: 'Record with `collection_id` and `record_id` provided already exists',
+                        message: 'Record with `collection_id` and `record_id` Provided Already Exists',
                         collection_id: collection_id,
                         record_id: record_id
                     });
@@ -33,12 +60,13 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         };
 
     Dataset.json = {
-        deserialize: function (json) {
+        deserialize: function (json, parameters) {
             return new Dataset(
                 json.revision,
                 json.records.items.map(function (item) {
                     return Record.json.deserialize(item);
-                })
+                }),
+                parameters
             );
         },
 
@@ -63,6 +91,18 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
     util.defineClass(Dataset, {
         getRecord: function (collection_id, record_id) {
+            if (this._collectionId) {
+                if (!record_id) {
+                    record_id = collection_id;
+                    collection_id = this._collectionId;
+                } else {
+                    if (collection_id != this._collectionId) {
+                        throw new Error({
+                            message: '`collection_id` Parameter Must Match Collection Filter'
+                        });
+                    }
+                }
+            }
             if (!collection_id) {
                 throw new Error({
                     message: '`collection_id` Parameter Required'
@@ -82,6 +122,10 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
 
         getLength: function () {
             return this._records.length;
+        },
+
+        getCollectionId: function () {
+            return this._collectionId;
         },
 
         iterator: function (collection_id) {
@@ -111,7 +155,8 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         applyDeltas: function (deltas) {
             var index = this._index,
                 revisionHistory = this._revisionHistory,
-                revision = this._revision;
+                revision = this._revision,
+                collectionIdFilter = this._collectionId;
 
             deltas.forEach(function (delta) {
                 var alteredRecords = {};
@@ -126,28 +171,30 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
                     var collection_id = change.collection_id,
                         record_id = change.record_id;
 
-                    if (!alteredRecords[collection_id]) {
-                        alteredRecords[collection_id] = {};
-                    }
-                    alteredRecords[collection_id][record_id] = true;
+                    if (!collectionIdFilter || collection_id == collectionIdFilter) {
+                        if (!alteredRecords[collection_id]) {
+                            alteredRecords[collection_id] = {};
+                        }
+                        alteredRecords[collection_id][record_id] = true;
 
-                    switch (change.change_type) {
-                        case 'insert':
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(change, true);
-                            break;
-                        case 'delete':
-                            delete index[collection_id][record_id];
-                            break;
-                        case 'update':
-                            var record = index[collection_id][record_id];
-                            change.changes.forEach(function (fieldChange) {
-                                record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
-                            });
-                            break;
+                        switch (change.change_type) {
+                            case 'insert':
+                            case 'set':
+                                if (!index[collection_id]) {
+                                    index[collection_id] = {};
+                                }
+                                index[collection_id][record_id] = Record.json.deserialize(change, true);
+                                break;
+                            case 'delete':
+                                delete index[collection_id][record_id];
+                                break;
+                            case 'update':
+                                var record = index[collection_id][record_id];
+                                change.changes.forEach(function (fieldChange) {
+                                    record.applyFieldOperation(FieldOperation.json.deserialize(fieldChange));
+                                });
+                                break;
+                        }
                     }
                 });
 
@@ -172,7 +219,7 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         },
 
         ifModifiedSince: function (options) {
-            var collection_id = options.collection_id,
+            var collection_id = options.collection_id || this._collectionId,
                 record_id = options.record_id,
                 revision = options.revision,
                 position = this._locateRevision(revision);
@@ -202,108 +249,111 @@ ns.modules.define('cloud.dataSyncApi.Dataset', [
         dryRun: function (revision, operations) {
             var conflicts = [],
                 index = copyIndex(this._index),
-                originalIndex = this._index;
+                originalIndex = this._index,
+                collectionIdFilter = this._collectionId;
 
             operations.forEach(function (operation, i) {
                 var collection_id = operation.getCollectionId(),
                     record_id = operation.getRecordId();
 
-                if (this.ifModifiedSince({
-                    collection_id: collection_id,
-                    record_id: record_id,
-                    revision: revision
-                })) {
-                    conflicts.push({
-                        index: i,
-                        conflict: new Conflict({
-                            type: 'both_modified',
-                            operation: operation
-                        })
-                    });
-                } else {
-                    switch (operation.getType()) {
-                        case 'insert':
-                            if (index[collection_id] && index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'record_already_exists',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
+                if (!collectionIdFilter || collection_id == collectionIdFilter) {
+                    if (this.ifModifiedSince({
+                            collection_id: collection_id,
+                            record_id: record_id,
+                            revision: revision
+                        })) {
+                        conflicts.push({
+                            index: i,
+                            conflict: new Conflict({
+                                type: 'both_modified',
+                                operation: operation
+                            })
+                        });
+                    } else {
+                        switch (operation.getType()) {
+                            case 'insert':
+                                if (index[collection_id] && index[collection_id][record_id]) {
+                                    conflicts.push({
+                                        index: i,
+                                        conflict: new Conflict({
+                                            type: 'record_already_exists',
+                                            operation: operation
+                                        })
+                                    });
+                                } else {
+                                    if (!index[collection_id]) {
+                                        index[collection_id] = {};
+                                    }
+                                    index[collection_id][record_id] = Record.json.deserialize(
+                                        Operation.json.serialize(operation), true
+                                    );
+                                }
+                                break;
+                            case 'set':
                                 if (!index[collection_id]) {
                                     index[collection_id] = {};
                                 }
                                 index[collection_id][record_id] = Record.json.deserialize(
                                     Operation.json.serialize(operation), true
                                 );
-                            }
-                            break;
-                        case 'set':
-                            if (!index[collection_id]) {
-                                index[collection_id] = {};
-                            }
-                            index[collection_id][record_id] = Record.json.deserialize(
-                                Operation.json.serialize(operation), true
-                            );
-                            break;
-                        case 'delete':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'delete_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                delete index[collection_id][record_id];
-                            }
-                            break;
-                        case 'update':
-                            if (!index[collection_id] || !index[collection_id][record_id]) {
-                                conflicts.push({
-                                    index: i,
-                                    conflict: new Conflict({
-                                        type: 'update_non_existent_record',
-                                        operation: operation
-                                    })
-                                });
-                            } else {
-                                var record = index[collection_id][record_id],
-                                    fieldChangeConflicts = [];
-
-                                if (record === true) {
-                                    record = originalIndex[collection_id][record_id].copy();
-                                }
-
-                                operation.getFieldOperations().forEach(function (fieldOperation, index) {
-                                    var error = record.dryRun(fieldOperation);
-                                    if (error) {
-                                        fieldChangeConflicts.push({
-                                            type: error,
-                                            index: index
-                                        });
-                                    } else {
-                                        record.applyFieldOperation(fieldOperation);
-                                    }
-                                });
-
-                                if (fieldChangeConflicts.length) {
+                                break;
+                            case 'delete':
+                                if (!index[collection_id] || !index[collection_id][record_id]) {
                                     conflicts.push({
                                         index: i,
                                         conflict: new Conflict({
-                                            type: 'invalid_field_change',
-                                            operation: operation,
-                                            field_change_conflicts: fieldChangeConflicts
+                                            type: 'delete_non_existent_record',
+                                            operation: operation
                                         })
                                     });
                                 } else {
-                                    index[collection_id][record_id] = record;
+                                    delete index[collection_id][record_id];
                                 }
-                            }
-                            break;
+                                break;
+                            case 'update':
+                                if (!index[collection_id] || !index[collection_id][record_id]) {
+                                    conflicts.push({
+                                        index: i,
+                                        conflict: new Conflict({
+                                            type: 'update_non_existent_record',
+                                            operation: operation
+                                        })
+                                    });
+                                } else {
+                                    var record = index[collection_id][record_id],
+                                        fieldChangeConflicts = [];
+
+                                    if (record === true) {
+                                        record = originalIndex[collection_id][record_id].copy();
+                                    }
+
+                                    operation.getFieldOperations().forEach(function (fieldOperation, index) {
+                                        var error = record.dryRun(fieldOperation);
+                                        if (error) {
+                                            fieldChangeConflicts.push({
+                                                type: error,
+                                                index: index
+                                            });
+                                        } else {
+                                            record.applyFieldOperation(fieldOperation);
+                                        }
+                                    });
+
+                                    if (fieldChangeConflicts.length) {
+                                        conflicts.push({
+                                            index: i,
+                                            conflict: new Conflict({
+                                                type: 'invalid_field_change',
+                                                operation: operation,
+                                                field_change_conflicts: fieldChangeConflicts
+                                            })
+                                        });
+                                    } else {
+                                        index[collection_id][record_id] = record;
+                                    }
+                                }
+                                break;
+                        }
                     }
                 }
             }, this);

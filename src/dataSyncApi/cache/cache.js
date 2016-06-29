@@ -11,81 +11,94 @@ ns.modules.define('cloud.dataSyncApi.cache', [
     });
 
     var cache = {
-            getDatasetKey: function (context, handle) {
-                return 'dataset_' + context + '_' + handle;
+            getDatasetKey: function (context, handle, collectionId) {
+                if (collectionId) {
+                    return 'dataset_' + context + '_' + handle + '|' + collectionId;
+                } else {
+                    return 'dataset_' + context + '_' + handle;
+                }
             },
 
-            getDataset: function (context, handle) {
-                var deferred = vow.defer();
-
-                localForage.getItem(
-                    this.getDatasetKey(context, handle),
-                    function (error, data) {
-                        if (error) {
-                            deferred.reject(error);
-                        } else {
-                            try {
-                                data = Dataset.json.deserialize(
-                                    JSON.parse(data)
+            getDataset: function (context, handle, collectionId) {
+                if (collectionId) {
+                    return getDatasetFromStorage(
+                        this.getDatasetKey(context, handle, collectionId),
+                        collectionId
+                    ).then(
+                        null,
+                        function (e) {
+                            if (e.code == 404) {
+                                return getDatasetFromStorage(
+                                    this.getDatasetKey(context, handle),
+                                    collectionId
                                 );
-                            } catch (e) {
-                                data = null;
-                                // Something went wrong, cache is corrupted
-                                cache.clear().always(function () {
-                                    deferred.reject(new Error({
-                                        code: 500
-                                    }));
-                                });
+                            } else {
+                                throw e;
                             }
+                        },
+                        this
+                    );
 
-                        if (data)
-                            deferred.resolve(data);
-                        }
-                    }
-                );
-
-                return deferred.promise();
+                } else {
+                    return getDatasetFromStorage(
+                        this.getDatasetKey(context, handle)
+                    );
+                }
             },
 
             saveDataset: function (context, handle, dataset) {
                 return this.saveItem(
-                    this.getDatasetKey(context, handle),
+                    this.getDatasetKey(context, handle, dataset.getCollectionId()),
                     JSON.stringify(Dataset.json.serialize(dataset))
                 );
             },
 
             saveItem: function (key, value) {
-                var deferred = vow.defer();
-
-                localForage.setItem(key, value, function (error) {
-                    if (error) {
-                        cache.clear().always(function () {
-                            deferred.reject(new Error({
+                return localForage.setItem(key, value).fail(function () {
+                        return cache.clear().always(function () {
+                            return vow.reject(new Error({
                                 code: 500
                             }));
                         });
-                    } else {
-                        deferred.resolve();
-                    }
                 });
-
-                return deferred.promise();
             },
 
             clear: function () {
-                var deferred = vow.defer();
-
-                localForage.clear(function (e) {
-                    if (e) {
-                        deferred.reject(e);
-                    } else {
-                        deferred.resolve();
-                    }
-                });
-
-                return deferred.promise();
+                return localForage.clear();
             }
         };
+
+    function getDatasetFromStorage (key, collectionId) {
+        var parameters = collectionId ? {
+                collection_id: collectionId,
+                collection_policy: 'skip'
+            } : null;
+
+        return localForage.getItem(key).then(function (data) {
+            if (!data) {
+                return vow.reject(new Error({
+                    code: 404
+                }));
+            } else {
+                try {
+                    data = Dataset.json.deserialize(
+                        JSON.parse(data),
+                        parameters
+                    );
+                } catch (e) {
+                    data = null;
+                    // Something went wrong, cache is corrupted
+                    return cache.clear().always(function () {
+                        return vow.reject(new Error({
+                            code: 500
+                        }));
+                    });
+                }
+            }
+
+            return data;
+        });
+    }
 
     provide (cache);
 });

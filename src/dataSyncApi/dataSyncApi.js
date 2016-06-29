@@ -27,6 +27,9 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {Boolean} [options.use_client_storage = false] true — закэшировать
      * снапшот базы в клиентском браузере (используя indexedDb или сходные технологии),
      * false — не кэшировать.
+     * @param {String} [options.collection_id] Фильтр по имени коллекции. При установке
+     * этого фильтра база будет содержать только объекты с указанным collection_id, все
+     * объекты с отличным от collection_id идентификатором коллекции будут пропускаться.
      * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён экземпляром
      * класса {@link cloud.dataSyncApi.Database} при успешном открытии базы данных, либо отклонён
      * с одной из следующих ошибок:

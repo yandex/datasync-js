@@ -34,6 +34,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
             this._possiblyMissedDelta = null;
             this._missedDelta = null;
             this._datasetController = null;
+            this._collectionId = options.collection_id;
 
             this._listeners = {
                 update: []
@@ -257,7 +258,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                 this,
                 (function (parameters, politics) {
                     return this._executeExclusiveTask(this._patch.bind(this, parameters, politics));
-                }).bind(this)
+                }).bind(this),
+                this._collectionId
             );
         },
 
@@ -362,7 +364,8 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         /**
-         * @param {String} collection_id Идентификатор коллекции.
+         * @param {String} [collection_id] Идентификатор коллекции. Необязателен,
+         * если задан фильтр по коллекции.
          * @param {String} record_id Идентификатор записи.
          * @returns {cloud.dataSyncApi.Record} Запись.
          */

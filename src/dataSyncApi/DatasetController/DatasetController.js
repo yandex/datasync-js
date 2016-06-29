@@ -21,7 +21,6 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             this._gone = false;
             this._updatePromise = null;
             this._dataset = null;
-            this._prefix = this._options.context + '_';
             return this._createDataset().then(function () {
                 return this;
             }, null, this);
@@ -61,7 +60,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                 handle = this._databaseHandle = metadata.handle;
 
             if (handle && options.use_client_storage) {
-                return cache.getDataset(options.context, handle).then(function (dataset) {
+                return cache.getDataset(options.context, handle, options.collection_id).then(function (dataset) {
                     return this._initDataset(dataset, {
                         need_update: true
                     });
@@ -76,7 +75,11 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         _getHttpSnapshot: function () {
             return http.getSnapshot(this._options).then(function (res) {
                 if (res.code == 200) {
-                    return this._initDataset(Dataset.json.deserialize(res.data));
+                    return this._initDataset(Dataset.json.deserialize(
+                        res.data, {
+                            collection_id: this._options.collection_id
+                        }
+                    ));
                 } else {
                     throw new Error({
                         code: res.code

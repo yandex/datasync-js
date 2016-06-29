@@ -126,6 +126,81 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
             ]).push();
         });
 
+        it('addOperations + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'insert',
+                            collection_id: 'col',
+                            record_id: 'rec_1',
+                            field_operations: [
+                                {
+                                    field_id: 'a',
+                                    type: 'set',
+                                    value: 'x'
+                                }, {
+                                    field_id: 'b',
+                                    type: 'delete'
+                                }
+                            ]
+                        }, {
+                            type: 'insert',
+                            collection_id: 'col',
+                            record_id: 'rec_2',
+                            field_operations: [
+                                {
+                                    field_id: 'a',
+                                    type: 'set',
+                                    value: 'x'
+                                }
+                            ]
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            expect(function () {
+                transaction.addOperations({
+                    type: 'insert',
+                    collection_id: 'col_2',
+                    record_id: 'rec_1'
+                });
+            }).to.throwError();
+
+            transaction.addOperations([
+                new Operation({
+                    type: 'insert',
+                    collection_id: 'col',
+                    record_id: 'rec_1',
+                    field_operations: [
+                        {
+                            field_id: 'a',
+                            type: 'set',
+                            value: 'x'
+                        },
+                        new FieldOperation({
+                            field_id: 'b',
+                            type: 'delete'
+                        })
+                    ]
+                }), {
+                    type: 'insert',
+                    record_id: 'rec_2',
+                    field_operations: [
+                        {
+                            field_id: 'a',
+                            type: 'set',
+                            value: 'x'
+                        }
+                    ]
+                }
+            ]).push();
+        });
+
         it('insertRecords', function (done) {
             transaction = new Transaction(
                 fakeDb,
@@ -187,6 +262,67 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                 .push();
         });
 
+        it('insertRecords + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'insert',
+                            collection_id: 'col',
+                            record_id: 'rec_1',
+                            field_operations: []
+                        }, {
+                            type: 'insert',
+                            collection_id: 'col',
+                            record_id: 'rec_2',
+                            field_operations: [
+                                {
+                                    field_id: 'b',
+                                    type: 'set',
+                                    value: 'y'
+                                }
+                            ]
+                        }, {
+                            type: 'insert',
+                            collection_id: 'col',
+                            record_id: 'rec_3',
+                            field_operations: [
+                                {
+                                    field_id: 'a',
+                                    type: 'set',
+                                    value: 'x'
+                                }
+                            ]
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            transaction
+                .insertRecords({
+                    collection_id: 'col',
+                    record_id: 'rec_1'
+                })
+                .insertRecords([
+                    new Record({
+                        collection_id: 'col',
+                        record_id: 'rec_2',
+                        fields: {
+                            b: 'y'
+                        }
+                    }), {
+                        record_id: 'rec_3',
+                        fields: {
+                            a: 'x'
+                        }
+                    }
+                ])
+                .push();
+        });
+
         it('deleteRecords', function (done) {
             transaction = new Transaction(
                 fakeDb,
@@ -221,6 +357,46 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                         record_id: 'rec_2'
                     }), {
                         collection_id: 'col',
+                        record_id: 'rec_3'
+                    }
+                ])
+                .push();
+        });
+
+        it('deleteRecords + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'delete',
+                            collection_id: 'col',
+                            record_id: 'rec_1'
+                        }, {
+                            type: 'delete',
+                            collection_id: 'col',
+                            record_id: 'rec_2'
+                        }, {
+                            type: 'delete',
+                            collection_id: 'col',
+                            record_id: 'rec_3'
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            transaction
+                .deleteRecords({
+                    collection_id: 'col',
+                    record_id: 'rec_1'
+                })
+                .deleteRecords([
+                    new Record({
+                        collection_id: 'col',
+                        record_id: 'rec_2'
+                    }), {
                         record_id: 'rec_3'
                     }
                 ])
@@ -292,6 +468,71 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                 .push();
         });
 
+        it('setRecordFields + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'set',
+                            collection_id: 'col',
+                            record_id: 'rec_1',
+                            field_operations: [{
+                                type: 'set',
+                                field_id: 'a',
+                                value: 1
+                            }, {
+                                type: 'set',
+                                field_id: 'b',
+                                value: true
+                            }]
+                        }, {
+                            type: 'set',
+                            collection_id: 'col',
+                            record_id: 'rec_2',
+                            field_operations: [{
+                                type: 'set',
+                                field_id: 'c',
+                                value: null
+                            }]
+                        }, {
+                            type: 'set',
+                            collection_id: 'col',
+                            record_id: 'rec_3',
+                            field_operations: []
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            transaction
+                .setRecordFields({
+                    record_id: 'rec_1'
+                }, {
+                    a: 1,
+                    b: new Value(true)
+                })
+                .setRecordFields(
+                    new Record({
+                        collection_id: 'col',
+                        record_id: 'rec_2'
+                    }), [
+                        new FieldOperation({
+                            type: 'set',
+                            field_id: 'c',
+                            value: null
+                        })
+                    ]
+                )
+                .setRecordFields({
+                    collection_id: 'col',
+                    record_id: 'rec_3'
+                })
+                .push();
+        });
+
         it('updateRecordFields', function (done) {
             transaction = new Transaction(
                 fakeDb,
@@ -339,7 +580,77 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                     record_id: 'rec_1'
                 }, {
                     a: 1,
-                    b: new Value(true),
+                    b: new Value(true)
+                })
+                .updateRecordFields(
+                    new Record({
+                        collection_id: 'col',
+                        record_id: 'rec_2'
+                    }), [
+                        new FieldOperation({
+                            type: 'set',
+                            field_id: 'c',
+                            value: null
+                        })
+                    ]
+                )
+                .updateRecordFields({
+                    collection_id: 'col',
+                    record_id: 'rec_3'
+                }, {
+                    d: undefined
+                })
+                .push();
+        });
+
+        it('updateRecordFields + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_1',
+                            field_operations: [{
+                                type: 'set',
+                                field_id: 'a',
+                                value: 1
+                            }, {
+                                type: 'set',
+                                field_id: 'b',
+                                value: true
+                            }]
+                        }, {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_2',
+                            field_operations: [{
+                                type: 'set',
+                                field_id: 'c',
+                                value: null
+                            }]
+                        }, {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_3',
+                            field_operations: [{
+                                field_id: 'd',
+                                type: 'delete'
+                            }]
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            transaction
+                .updateRecordFields({
+                    record_id: 'rec_1'
+                }, {
+                    a: 1,
+                    b: new Value(true)
                 })
                 .updateRecordFields(
                     new Record({
@@ -440,6 +751,91 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                 })
                 .moveRecordFieldListItem({
                     collection_id: 'col',
+                    record_id: 'rec_4'
+                }, {
+                    field_id: 'd',
+                    index: 3,
+                    new_index: 4
+                })
+                .push();
+        });
+
+        it('listOperations + collectionId', function (done) {
+            transaction = new Transaction(
+                fakeDb,
+                getFakePatcher(function (operations, politics) {
+                    compareOperations(operations, [
+                        {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_1',
+                            field_operations: [{
+                                type: 'list_item_insert',
+                                field_id: 'a',
+                                value: true,
+                                index: 0
+                            }]
+                        }, {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_2',
+                            field_operations: [{
+                                type: 'list_item_delete',
+                                field_id: 'b',
+                                index: 1
+                            }]
+                        }, {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_3',
+                            field_operations: [{
+                                field_id: 'c',
+                                index: 2,
+                                type: 'list_item_set',
+                                value: true
+                            }]
+                        }, {
+                            type: 'update',
+                            collection_id: 'col',
+                            record_id: 'rec_4',
+                            field_operations: [{
+                                field_id: 'd',
+                                index: 3,
+                                new_index: 4,
+                                type: 'list_item_move'
+                            }]
+                        }
+                    ]);
+                    done();
+                }),
+                'col'
+            );
+
+            transaction
+                .insertRecordFieldListItem({
+                    record_id: 'rec_1'
+                }, {
+                    field_id: 'a',
+                    index: 0,
+                    value: new Value(true)
+                })
+                .deleteRecordFieldListItem(
+                    new Record({
+                        collection_id: 'col',
+                        record_id: 'rec_2'
+                    }), {
+                        field_id: 'b',
+                        index: 1
+                    }
+                )
+                .setRecordFieldListItem({
+                    record_id: 'rec_3'
+                }, {
+                    field_id: 'c',
+                    index: 2,
+                    value: true
+                })
+                .moveRecordFieldListItem({
                     record_id: 'rec_4'
                 }, {
                     field_id: 'd',

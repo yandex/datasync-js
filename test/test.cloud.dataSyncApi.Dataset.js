@@ -42,7 +42,7 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 }]}
             };
 
-        function checkDataset(dataset, revision, ref) {
+        function checkDataset(dataset, revision, ref, collectionId) {
             expect(dataset.getRevision()).to.be(revision);
 
             var records = ref.reduce(function (records, record) {
@@ -53,10 +53,21 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 return records;
             }, {});
 
-            for (var it = dataset.iterator(), value = it.next(); !value.done; value = it.next()) {
+            var it, value;
+            for (it = dataset.iterator(), value = it.next(); !value.done; value = it.next()) {
                 var recordRef = records[value.value.getCollectionId()] && records[value.value.getCollectionId()][value.value.getRecordId()];
                 expect(recordRef).to.be.ok();
                 checkRecord(value.value, recordRef);
+            }
+
+            if (collectionId) {
+                Object.keys(records).forEach(function (collectionId) {
+                    Object.keys(records[collectionId]).forEach(function (recordId) {
+                        var record = dataset.getRecord(recordId);
+                        expect(record).to.be.ok();
+                        expect(record.getCollectionId()).to.eql(collectionId);
+                    });
+                });
             }
         }
 
@@ -94,6 +105,90 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 collection_id: 'col',
                 record_id: 'rec_2',
                 fields: { b: 1 }
+            }]);
+        });
+
+        it('constructor + collection_id', function () {
+            dataset = new Dataset(0, [
+                new Record({
+                    collection_id: 'col',
+                    record_id: 'rec_1',
+                    fields: { a: 0 }
+                }), {
+                    collection_id: 'col',
+                    record_id: 'rec_2',
+                    fields: { b: 1 }
+                }, {
+                    record_id: 'rec_3',
+                    fields: { c: 2 }
+                }
+            ], {
+                collection_id: 'col'
+            });
+            checkDataset(dataset, 0, [{
+                collection_id: 'col',
+                record_id: 'rec_1',
+                fields: { a: 0 }
+            }, {
+                collection_id: 'col',
+                record_id: 'rec_2',
+                fields: { b: 1 }
+            }, {
+                collection_id: 'col',
+                record_id: 'rec_3',
+                fields: { c: 2 }
+            }], {
+                collection_id: 'col'
+            });
+        });
+
+        it('constructor + wrong collection_id', function () {
+            expect(function () {
+                dataset = new Dataset(0, [
+                    new Record({
+                        collection_id: 'wrong_col',
+                        record_id: 'rec_1',
+                        fields: { a: 0 }
+                    })
+                ], {
+                    collection_id: 'col'
+                });
+            }).to.throwError();
+            expect(function () {
+                dataset = new Dataset(0, [{
+                    collection_id: 'wrong_col',
+                    record_id: 'rec_1',
+                    fields: { a: 0 }
+                }], {
+                    collection_id: 'col'
+                });
+            }).to.throwError();
+
+            dataset = new Dataset(0, [
+                    new Record({
+                        collection_id: 'wrong_col',
+                        record_id: 'rec_1',
+                        fields: { a: 0 }
+                    }), {
+                        record_id: 'rec_1',
+                        fields: { a: 1 }
+                    }, {
+                        collection_id: 'col',
+                        record_id: 'rec_2',
+                        fields: { b: 2 }
+                    }
+                ], {
+                    collection_id: 'col',
+                    collection_policy: 'skip'
+                });
+            checkDataset(dataset, 0, [{
+                collection_id: 'col',
+                record_id: 'rec_1',
+                fields: { a: 1 }
+            }, {
+                collection_id: 'col',
+                record_id: 'rec_2',
+                fields: { b: 2 }
             }]);
         });
 
@@ -151,6 +246,30 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 record_ids.push(item.value.getRecordId());
             }
             expect(record_ids).to.eql(['rec_2']);
+        });
+
+        it('iterators + collection_id', function () {
+            dataset = new Dataset(0, [
+                {
+                    collection_id: 'col',
+                    record_id: 'rec_1',
+                    fields: { a: 0 }
+                }, {
+                    record_id: 'rec_2',
+                    fields: { b: 1 }
+                }
+            ], {
+                collection_id: 'col'
+            });
+
+            var record_ids = [],
+                it,
+                item;
+
+            for (it = dataset.iterator(), item = it.next(); !item.done; item = it.next()) {
+                record_ids.push(item.value.getRecordId());
+            }
+            expect(record_ids.sort()).to.eql(['rec_1', 'rec_2']);
         });
 
         it('applyDeltas', function () {
@@ -292,6 +411,116 @@ ya.modules.define('test.cloud.dataSyncApi.Dataset', [
                 record_id: 'rec_2',
                 revision: 1
             })).to.be(true);
+        });
+
+        it('applyDeltas + collection_id', function () {
+            dataset = new Dataset(0, [
+                {
+                    collection_id: 'col',
+                    record_id: 'rec_1',
+                    fields: { a: 0 }
+                }, {
+                    record_id: 'rec_2',
+                    fields: { b: 1 }
+                }
+            ], {
+                collection_id: 'col'
+            });
+
+            dataset.applyDeltas([
+                {
+                    base_revision: 0,
+                    revision: 1,
+                    changes: [
+                        {
+                            record_id: 'rec_1',
+                            collection_id: 'col',
+                            change_type: 'delete'
+                        }, {
+                            record_id: 'rec_1',
+                            collection_id: 'col',
+                            change_type: 'insert',
+                            changes: [
+                                {
+                                    field_id: 'b',
+                                    change_type: 'set',
+                                    value: {
+                                        type: 'string',
+                                        string: 'trololo'
+                                    }
+                                }
+                            ]
+                        }, {
+                            record_id: 'rec_1',
+                            collection_id: 'col_2',
+                            change_type: 'insert',
+                            changes: [
+                                {
+                                    field_id: 'b',
+                                    change_type: 'set',
+                                    value: {
+                                        type: 'string',
+                                        string: 'trololo'
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }, {
+                    base_revision: 1,
+                    revision: 2,
+                    changes: [{
+                        record_id: 'rec_2',
+                        collection_id: 'col_2',
+                        change_type: 'update',
+                        changes: [
+                            {
+                                field_id: 'b',
+                                change_type: 'set',
+                                value: {
+                                    type: 'string',
+                                    string: 'trololo'
+                                }
+                            }, {
+                                field_id: 'c',
+                                change_type: 'delete'
+                            }
+                        ]
+                    }]
+                }
+            ]);
+
+            checkDataset(dataset, 2, [
+                {
+                    collection_id: 'col',
+                    record_id: 'rec_1',
+                    fields: { b: 'trololo' }
+                }, {
+                    collection_id: 'col',
+                    record_id: 'rec_2',
+                    fields: { b: 1 }
+                }
+            ], 'col');
+
+            expect(dataset.ifModifiedSince({
+                record_id: 'rec_1',
+                revision: 0
+            })).to.be(true);
+
+            expect(dataset.ifModifiedSince({
+                record_id: 'rec_1',
+                revision: 1
+            })).to.be(false);
+
+            expect(dataset.ifModifiedSince({
+                record_id: 'rec_2',
+                revision: 0
+            })).to.be(false);
+
+            expect(dataset.ifModifiedSince({
+                record_id: 'rec_2',
+                revision: 1
+            })).to.be(false);
         });
 
         function prepareDataset () {

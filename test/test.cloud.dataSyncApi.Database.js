@@ -7,6 +7,7 @@ if (typeof XMLHttpRequest == 'undefined') {
 
 ya.modules.define('test.cloud.dataSyncApi.Database', [
     'vow',
+    'test.util',
     'cloud.dataSyncApi.cache',
     'cloud.dataSyncApi.Database',
     'cloud.dataSyncApi.Record',
@@ -16,19 +17,8 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.http',
     'cloud.Error',
     'cloud.dataSyncApi.config'
-], function (provide, vow, cache, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
-    var params = typeof process != 'undefined' ?
-            Object.keys(process.env).reduce(function (params, key) {
-                if (key.indexOf('npm_config_') == 0) {
-                    params[key.slice('npm_config_'.length)] = process.env[key];
-                }
-                return params;
-            }, {}) :
-            (window.location.search || '').replace(/^\?/, '').split('&').reduce(function (params, param) {
-                var pair = param.split('=', 2);
-                params[pair[0]] = pair[1];
-                return params;
-            }, {}),
+], function (provide, vow, util, cache, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
+    var params = util.extractParams(),
         token = params.token,
         context = params.context || 'app',
         use_client_storage = params.use_client_storage == 'true',
@@ -40,6 +30,15 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
             token: token,
             use_client_storage: use_client_storage,
             create_if_not_exists: true
+        },
+
+        defaultCollectionParams = {
+            database_id: name,
+            context: context,
+            token: token,
+            use_client_storage: use_client_storage,
+            create_if_not_exists: true,
+            collection_id: 'col'
         },
 
         transaction,
@@ -70,9 +69,11 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                     });
                 };
             },
-            prepareDatabase = function (done, fail) {
+            prepareDatabase = function (done, fail, collectionId) {
+                var params = collectionId ? defaultCollectionParams : defaultParams;
+
                 return http.deleteDatabase(defaultParams).then(function () {
-                    (new Database(defaultParams)).then(done, fail).fail(fail);
+                    (new Database(defaultCollectionParams)).then(done, fail).fail(fail);
                 }, fail).fail(fail);
             };
 
@@ -135,6 +136,39 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         expect(e.conflicts[1].conflict.getFieldChangeConflicts()[0].type).to.be('modify_not_a_list_field');
                         doneHandler(done);
                     }).fail(fail);
+            }
+        });
+
+        it('collectionId', function (done) {
+            var fail = getFailer(done);
+
+            prepareDatabase(function (database) {
+                testCollectionId(database);
+            }, fail, true).fail(fail);
+
+            function testCollectionId (database) {
+                database.createTransaction()
+                    .insertRecords({
+                        record_id: 'rec',
+                        fields: {
+                            a: [1]
+                        }
+                    })
+                    .setRecordFieldListItem({
+                        record_id: 'rec',
+                        collection_id: 'col'
+                    }, {
+                        field_id: 'a',
+                        index: 0,
+                        value: null
+                    })
+                    .push()
+                    .done(function () {
+                        var record = database.getRecord('rec');
+                        expect(record).to.be.ok();
+                        expect(record.getCollectionId()).to.be(defaultCollectionParams.collection_id);
+                        doneHandler(done);
+                    }, fail);
             }
         });
 

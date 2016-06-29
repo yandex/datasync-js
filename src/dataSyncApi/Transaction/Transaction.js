@@ -11,12 +11,13 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @see cloud.dataSyncApi.Database.createTransaction
          * @name cloud.dataSyncApi.Transaction
          */
-    var Transaction = function (database, patchCallback) {
+    var Transaction = function (database, patchCallback, collectionId) {
             this._database = database;
             this._patchCallback = patchCallback;
             this._deltaId = 'ya_cloud_data_js_api_1_' + Math.random().toString();
             this._baseRevision = database.getRevision();
             this._operations = [];
+            this._collectionId = collectionId;
         };
 
     util.defineClass(Transaction, /** @lends cloud.dataSyncApi.Transaction.prototype */ {
@@ -28,8 +29,20 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         addOperations: function (operations) {
-            [].push.apply(this._operations, [].concat(operations).map(function (operation) {
-                return operation instanceof Operation ? operation : new Operation(operation);
+            var collectionId = this._collectionId;
+            this._operations = this._operations.concat([].concat(operations).map(function (operation) {
+                if (!(operation instanceof Operation)) {
+                    if (collectionId && !operation.collectionId) {
+                        operation = util.extend({
+                            collection_id: collectionId
+                        }, operation);
+                    }
+                    operation = new Operation(operation);
+                }
+                if (collectionId && operation.getCollectionId() != collectionId) {
+                    throw new Error('`collection_id` Parameter Value Must Match Current Filter');
+                }
+                return operation;
             }));
             return this;
         },
@@ -98,8 +111,9 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         insertRecords: function (records) {
+            var defaultCollectionId = this._collectionId;
             return this.addOperations([].concat(records).map(function (record) {
-                var options = castOperationOptions('insert', record);
+                var options = castOperationOptions('insert', record, defaultCollectionId);
 
                 if (record instanceof Record) {
                     options.field_operations = record.getFieldIds().map(function (key) {
@@ -131,8 +145,9 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         deleteRecords: function (records) {
+            var defaultCollectionId = this._collectionId;
             return this.addOperations([].concat(records).map(function (record) {
-                return new Operation(castOperationOptions('delete', record));
+                return new Operation(castOperationOptions('delete', record, defaultCollectionId));
             }));
         },
 
@@ -146,7 +161,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         setRecordFields: function (record, fields) {
-            var options = castOperationOptions('set', record);
+            var options = castOperationOptions('set', record, this._collectionId);
 
             if (Array.isArray(fields)) {
                 options.field_operations = fields;
@@ -174,7 +189,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         updateRecordFields: function (record, fields) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             if (Array.isArray(fields)) {
                 options.field_operations = fields;
@@ -213,7 +228,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         insertRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -242,7 +257,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         setRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -269,7 +284,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         moveRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -295,7 +310,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
          * @returns {cloud.dataSyncApi.Transaction} Ссылку на себя.
          */
         deleteRecordFieldListItem: function (record, parameters) {
-            var options = castOperationOptions('update', record);
+            var options = castOperationOptions('update', record, this._collectionId);
 
             options.field_operations = [
                 new FieldOperation({
@@ -309,7 +324,7 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
         }
     });
 
-    function castOperationOptions (type, record) {
+    function castOperationOptions (type, record, defaultCollectionId) {
         var options = {
                 type: type
             };
@@ -318,8 +333,12 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
             options.collection_id = record.getCollectionId();
             options.record_id = record.getRecordId();
         } else {
-            options.collection_id = record.collection_id;
+            options.collection_id = record.collection_id || defaultCollectionId;
             options.record_id = record.record_id;
+        }
+
+        if (defaultCollectionId && options.collection_id != defaultCollectionId) {
+            throw new Error('`collection_id` Parameter Must Match Current Filter');
         }
 
         return options;

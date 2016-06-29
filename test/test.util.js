@@ -46,15 +46,15 @@ ya.modules.define('test.util', [
                 }
             },
 
-            checkDataset: function (dataset, ref) {
+            checkDataset: function (dataset, ref, parameters) {
                 var keys = [],
                     refKeys = [];
 
                 if (!(dataset instanceof Dataset) && !(dataset instanceof Database)) {
-                    dataset = Dataset.json.deserialize(dataset);
+                    dataset = Dataset.json.deserialize(dataset, parameters);
                 }
                 if (!(ref instanceof Dataset) && !(ref instanceof Database)) {
-                    ref = Dataset.json.deserialize(ref);
+                    ref = Dataset.json.deserialize(ref, parameters);
                 }
 
                 for (var it = dataset.iterator(), value = it.next(); !value.done; value = it.next()) {
