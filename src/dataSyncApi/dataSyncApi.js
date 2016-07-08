@@ -1,5 +1,5 @@
 /**
- * @class Основной неймпспейс для работы с Data API Диска.
+ * @class Основной неймпспейс для работы с DataSync API.
  * @name cloud.dataSyncApi
  * @static
  * @noconstructor
