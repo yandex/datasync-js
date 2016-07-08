@@ -4,8 +4,9 @@ ns.modules.define('global', function (provide) {
 if (typeof module == 'object') {
     module.exports = ns;
 } else {
-    var ya = global.ya || (global.ya = {});
-    ya.modules = ns.modules;
-    ya.vow = ns.vow;
+    var ya = global.ya || (global.ya = {
+            modules: ns.modules,
+            vow: ns.vow
+        });
     ya.cloud = ns.cloud;
 }

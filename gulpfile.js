@@ -50,7 +50,36 @@ gulp.task('release', ['debug'], function () {
         .pipe(gulp.dest('./build/'));
 });
 
-gulp.task('default', ['debug', 'release']);
+gulp.task('debug.stripped', function () {
+    return queue({ objectMode: true },
+            gulp.src('src/intro-stripped.js'),
+            gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
+                .pipe(wrapper({
+                        header: '(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                        footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide, config) { provide(localForage); }); })(ns);\n"
+                    })
+                ),
+            gulp.src('src/*/**/*.js'),
+            gulp.src('src/outro.js')
+        )
+        .pipe(concat('cloud-data-sync-api.stripped.js'))
+        .pipe(wrapper({
+            header: '(function (global) {',
+            footer: '})(this);'
+        }))
+        .pipe(gulp.dest('./build/'));
+});
+
+gulp.task('release.stripped', ['debug.stripped'], function () {
+    return gulp.src('build/cloud-data-sync-api.stripped.js')
+        .pipe(uglify())
+        .pipe(rename({
+            extname: '.min.js'
+        }))
+        .pipe(gulp.dest('./build/'));
+});
+
+gulp.task('default', ['debug', 'debug.stripped', 'release', 'release.stripped']);
 
 gulp.task('watch', ['debug'], function () {
     gulp.watch('src/**/*.js', ['debug']);
@@ -59,4 +88,3 @@ gulp.task('watch', ['debug'], function () {
 gulp.task('clean', function (callback) {
     del(['build/cloud-data-sync-api*.js'], callback);
 });
-

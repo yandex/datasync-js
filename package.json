@@ -25,6 +25,8 @@
     "scripts": {
         "debug": "gulp debug",
         "release": "gulp release",
+        "debug.stripped": "gulp debug.stripped",
+        "release.stripped": "gulp release.stripped",
         "all": "gulp",
         "clean": "gulp clean",
         "watch": "gulp watch",
