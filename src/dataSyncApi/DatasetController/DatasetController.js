@@ -94,9 +94,9 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             if (parameters && parameters.need_update) {
                 return this.update().fail(function (e) {
                     if (e.code == 410) {
-                        deferred.resolve(this._getHttpSnapshot(options));
+                        return this._getHttpSnapshot(options);
                     } else {
-                        deferred.reject(e);
+                        throw e;
                     }
                 }, this);
             } else {
