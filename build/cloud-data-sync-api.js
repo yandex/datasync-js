@@ -4052,7 +4052,7 @@ ns.modules.define('cloud.client', [], function (provide) {
 });
 
 /**
- * @class Основной неймпспейс для работы с Data API Диска.
+ * @class Основной неймпспейс для работы с DataSync API.
  * @name cloud.dataSyncApi
  * @static
  * @noconstructor
@@ -5756,9 +5756,9 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
             if (parameters && parameters.need_update) {
                 return this.update().fail(function (e) {
                     if (e.code == 410) {
-                        deferred.resolve(this._getHttpSnapshot(options));
+                        return this._getHttpSnapshot(options);
                     } else {
-                        deferred.reject(e);
+                        throw e;
                     }
                 }, this);
             } else {
