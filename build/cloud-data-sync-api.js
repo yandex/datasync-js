@@ -1,4 +1,5 @@
-(function (global) {/**
+(function (global) {
+/**
  * Yandex DataSync JS API
  *
  * Copyright 2014-2015 Yandex LLC and contributors https://yandex.com/
@@ -19,7 +20,7 @@ var ns = {
         cloud: {}
     };
 
-(function(ns){var module = { exports: {} }, exports = {};
+/* eslint-disable */(function(ns){var module = { exports: {} }, exports = {};
 /**
  * Modules
  *
@@ -440,13 +441,13 @@ else {
 })(typeof window !== 'undefined' ? window : global);
 
 ns.modules = module.exports; })(ns);
-
-(function (ns) {
+/* eslint-enable */
+/* eslint-disable */(function (ns) {
 var module = { exports: {} }, exports = {};
 /**
  * @module vow
  * @author Filatov Dmitry <dfilatov@yandex-team.ru>
- * @version 0.4.11
+ * @version 0.4.12
  * @license
  * Dual licensed under the MIT and GPL licenses:
  *   * http://www.opensource.org/licenses/mit-license.php
@@ -1140,7 +1141,8 @@ Promise.prototype = /** @lends Promise.prototype */ {
         }
 
         var isResolved = this.isResolved(),
-            isFulfilled = this.isFulfilled();
+            isFulfilled = this.isFulfilled(),
+            isRejected = this.isRejected();
 
         nextTick(function() {
             var i = 0, cb, defer, fn;
@@ -1164,12 +1166,14 @@ Promise.prototype = /** @lends Promise.prototype */ {
                         defer.resolve(res) :
                         defer.notify(res);
                 }
+                else if(isFulfilled) {
+                    defer.resolve(arg);
+                }
+                else if(isRejected) {
+                    defer.reject(arg);
+                }
                 else {
-                    isResolved?
-                        isFulfilled?
-                            defer.resolve(arg) :
-                            defer.reject(arg) :
-                        defer.notify(arg);
+                    defer.notify(arg);
                 }
             }
         });
@@ -1773,8 +1777,8 @@ defineAsGlobal && (global.vow = vow);
 })(typeof window !== 'undefined'? window : global);
 
 ns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);
-
-(function (ns) {
+/* eslint-enable */
+/* eslint-disable */(function (ns) {
 var module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;
 /*!
     localForage -- Offline Storage, Improved
@@ -3875,7 +3879,7 @@ return /******/ (function(modules) { // webpackBootstrap
 });
 ;
 var localForage = module.exports;
-ns.modules.define('localForage', [], function (provide, config) { provide(localForage); }); })(ns);
+ns.modules.define('localForage', [], function (provide) { provide(localForage); }); })(ns);/* eslint-enable */
 
 ns.modules.define('cloud.Error', ['component.util'], function (provide, util) {
     var messages = {
@@ -3996,7 +4000,9 @@ Client.prototype.initialize = function (options) {
                                     global.clearInterval(intervalId);
                                     deferred.resolve(this._token);
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                // do nothing
+                            }
                         }
                     }.bind(this), 100);
                 } else {
@@ -4638,9 +4644,8 @@ ns.modules.define('component.util', function (provide) {
 ns.modules.define('component.xhr', [
     'global',
     'vow',
-    'cloud.Error',
-    'cloud.dataSyncApi.config'
-], function (provide, global, vow, Error, config) {
+    'cloud.Error'
+], function (provide, global, vow, Error) {
     var XMLHttpRequest = global.XMLHttpRequest,
         parseHeaders = function (headers) {
             return headers.split('\u000d\u000a').reduce(function (result, line) {
@@ -5115,7 +5120,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                         }).then(
                             function (revision) {
                                 delta.revision = revision;
-                                dataset.applyDeltas([ delta ]);
+                                dataset.applyDeltas([delta]);
                                 success();
                                 this._notify('update', revision);
                             },
@@ -5235,7 +5240,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
     function prepareOperation (dataset, parameters, politicsKey) {
         var operations = parameters.operations,
-            result = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations),
             conflicts = result.conflicts;
 
         if (conflicts.length && politicsKey) {
@@ -5735,11 +5740,13 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _getHttpSnapshot: function () {
+            var options = this._options;
+
             return http.getSnapshot(this._options).then(function (res) {
                 if (res.code == 200) {
                     return this._initDataset(Dataset.json.deserialize(
                         res.data, {
-                            collection_id: this._options.collection_id
+                            collection_id: options.collection_id
                         }
                     ));
                 } else {
@@ -5751,6 +5758,8 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _initDataset: function (dataset, parameters) {
+            var options = this._options;
+
             this._dataset = dataset;
 
             if (parameters && parameters.need_update) {
@@ -6691,8 +6700,9 @@ ns.modules.define('cloud.dataSyncApi.Transaction', [
 
 ns.modules.define('cloud.dataSyncApi.Value', [
     'component.util',
-    'cloud.Error'
-], function (provide, util, Error) {
+    'cloud.Error',
+    'global'
+], function (provide, util, Error, global) {
     /**
      * @name cloud.dataSyncApi.Value
      * @class Объект, представляющий значение поля записи.
@@ -6947,7 +6957,8 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                 if (value == null) {
                     return 'null';
                 } else if (typeof global.ArrayBuffer != 'undefined' && (
-                        value instanceof ArrayBuffer || (value.buffer && value.buffer instanceof ArrayBuffer)
+                        value instanceof global.ArrayBuffer ||
+                        (value.buffer && value.buffer instanceof global.ArrayBuffer)
                     )) {
                     return 'binary'
                 } else if (value instanceof Date) {
@@ -6956,7 +6967,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                     return 'boolean';
                 } else if (value instanceof Number) {
                     return 'double';
-                } else if (Array.isArray(value)) {
+                } else if (global.Array.isArray(value)) {
                     return 'list';
                 } else {
                     return 'string';
@@ -6982,10 +6993,10 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                 return value instanceof Date ? value.toISOString() : value;
             case 'binary':
                 if (typeof global.ArrayBuffer != 'undefined') {
-                    if (value instanceof ArrayBuffer) {
-                        return global.btoa(String.fromCharCode.apply(null, new Uint8Array(value)));
-                    } else if (value.buffer && value.buffer instanceof ArrayBuffer) {
-                        return global.btoa(String.fromCharCode.apply(null, new Uint8Array(value.buffer)));
+                    if (value instanceof global.ArrayBuffer) {
+                        return global.btoa(String.fromCharCode.apply(null, new global.Uint8Array(value)));
+                    } else if (value.buffer && value.buffer instanceof global.ArrayBuffer) {
+                        return global.btoa(String.fromCharCode.apply(null, new global.Uint8Array(value.buffer)));
                     } else {
                         return value.toString();
                     }
@@ -7026,7 +7037,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
 
         var length = value.length,
             outLength = length * 3 + 1 >> 2,
-            result = new Uint8Array(outLength),
+            result = new global.Uint8Array(outLength),
             mod3, mod4, int24 = 0;
 
         for (var outIndex = 0, inIndex = 0; inIndex < length; inIndex++) {
@@ -7192,6 +7203,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             if (!allowedContext(options.context)) {
                 return fail('Invalid `options.context` Value');
             }
+            return null;
         },
         allowedContext = function (context) {
             return context && config.contexts[context];
@@ -7217,7 +7229,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             if (options.token) {
                 params.headers.Authorization = 'OAuth ' + options.token;
                 return vow.resolve(params);
-            } else if (client.isInitiaized()) {
+            } else if (client.isInitialized()) {
                 if (client.withCredentials()) {
                     params.withCredentials = true;
                 } else {
@@ -7506,7 +7518,9 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                     db.callbacks.slice().forEach(function (callback) {
                         try {
                             callback(revision);
-                        } catch (e) {}
+                        } catch (e) {
+                            // do nothing
+                        }
                     });
                 }
             },
@@ -7528,9 +7542,8 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'global',
     'vow',
     'component.util',
-    'cloud.dataSyncApi.http',
-    'cloud.Error'
-], function (provide, global, vow, util, http, Error) {
+    'cloud.dataSyncApi.http'
+], function (provide, global, vow, util, http) {
     var AbstractEngine = function (options) {
             this._options = options || {};
             this._databases = {};
@@ -7543,7 +7556,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
 
     util.defineClass(AbstractEngine, {
         addDatabase: function (databases) {
-            databases = [].concat.call([], databases);
+            databases = [].concat(databases);
             databases.forEach(function (database) {
                 this._databases[this.getDatabaseKey(database)] = {
                     database: database,
@@ -7554,7 +7567,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         removeDatabase: function (databases) {
-            databases = [].concat.call([], databases);
+            databases = [].concat(databases);
             databases.forEach(function (database) {
                 delete this._databases[this.getDatabaseKey(database)];
             }, this);
@@ -7679,7 +7692,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
                 global.clearTimeout(this._updateTimeout);
                 this._updateTimeout = null;
             }
-            PushEngine.superclass.fail.call(this, e);
+            PollEngine.superclass.fail.call(this, e);
         }
     });
 
@@ -7774,12 +7787,13 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PushEngine', [
 ns.modules.define('global', function (provide) {
     provide(global);
 });
-if (typeof module == 'object') {
-    module.exports = ns;
+if (typeof global.module == 'object') {
+    global.module.exports = ns;
 } else {
     var ya = global.ya || (global.ya = {
             modules: ns.modules,
             vow: ns.vow
         });
     ya.cloud = ns.cloud;
-}})(this);
+}
+})(this);
