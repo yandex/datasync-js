@@ -37,9 +37,6 @@ gulp.task('debug', function () {
             header: '(function (global) {\n',
             footer: '\n})(this);'
         }))
-        .pipe(eslint(eslintRules))
-        .pipe(eslint.format())
-        .pipe(eslint.failAfterError())
         .pipe(gulp.dest('./build/'))
         .on('end', function () {
             del.sync(['build/vow.js', 'build/modules.js']);
@@ -72,9 +69,6 @@ gulp.task('debug.stripped', function () {
             header: '(function (global) {\n',
             footer: '\n})(this);'
         }))
-        .pipe(eslint(eslintRules))
-        .pipe(eslint.format())
-        .pipe(eslint.failAfterError())
         .pipe(gulp.dest('./build/'));
 });
 

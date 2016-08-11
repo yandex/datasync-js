@@ -135,7 +135,7 @@ ya.modules.define('test.cloud.dataSyncApi.syncEngine', [
                             data: {"href": ""}
                         },
                         getDatabases: {
-                            timeout: options.getDatbasesDelay || 50,
+                            timeout: options.getDatabasesDelay || 50,
                             data: function (options) {
                                 return httpResponse[options.context + ':' + options.database_id];
                             }
@@ -162,7 +162,10 @@ ya.modules.define('test.cloud.dataSyncApi.syncEngine', [
             engine.addDatabase(db1);
             engine.addDatabase(db2);
 
-            ready(engine, changer, log, done);
+            ready(engine, changer, log, function () {
+                engine.removeAll();
+                done();
+            });
         };
 
     describe('cloud.dataSyncApi.syncEngine', function () {
