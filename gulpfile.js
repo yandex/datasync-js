@@ -4,27 +4,29 @@ var gulp = require('gulp'),
     concat = require('gulp-concat'),
     del = require('del'),
     rename = require('gulp-rename'),
-    queue = require('streamqueue');
+    queue = require('streamqueue'),
+    eslint = require('gulp-eslint'),
+    eslintRules = require('fs').readFileSync('.eslintrc.json');
 
 gulp.task('debug', function () {
     return queue({ objectMode: true },
             gulp.src('src/intro.js'),
             gulp.src(['node_modules/ym/modules.js'])
                 .pipe(wrapper({
-                    header: '(function(ns){var module = { exports: {} }, exports = {};\n',
-                    footer: '\nns.modules = module.exports; })(ns);\n'
+                    header: '/* eslint-disable */(function(ns){var module = { exports: {} }, exports = {};\n',
+                    footer: '\nns.modules = module.exports; })(ns);\n/* eslint-enable */'
                 })
             ),
             gulp.src(['node_modules/vow/lib/vow.js'])
                 .pipe(wrapper({
-                    header: '(function (ns) {\nvar module = { exports: {} }, exports = {};\n',
-                    footer: "\nns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);\n"
+                    header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {};\n',
+                    footer: "\nns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);\n/* eslint-enable */"
                 })
             ),
             gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
                 .pipe(wrapper({
-                    header: '(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
-                    footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide, config) { provide(localForage); }); })(ns);\n"
+                    header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                    footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide) { provide(localForage); }); })(ns);/* eslint-enable */\n"
                 })
             ),
             gulp.src('src/*/**/*.js'),
@@ -32,9 +34,12 @@ gulp.task('debug', function () {
         )
         .pipe(concat('cloud-data-sync-api.js'))
         .pipe(wrapper({
-            header: '(function (global) {',
-            footer: '})(this);'
+            header: '(function (global) {\n',
+            footer: '\n})(this);'
         }))
+        .pipe(eslint(eslintRules))
+        .pipe(eslint.format())
+        .pipe(eslint.failAfterError())
         .pipe(gulp.dest('./build/'))
         .on('end', function () {
             del.sync(['build/vow.js', 'build/modules.js']);
@@ -55,8 +60,8 @@ gulp.task('debug.stripped', function () {
             gulp.src('src/intro-stripped.js'),
             gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
                 .pipe(wrapper({
-                        header: '(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
-                        footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide, config) { provide(localForage); }); })(ns);\n"
+                        header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                        footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide) { provide(localForage); }); })(ns);\n/* eslint-enable */"
                     })
                 ),
             gulp.src('src/*/**/*.js'),
@@ -64,9 +69,12 @@ gulp.task('debug.stripped', function () {
         )
         .pipe(concat('cloud-data-sync-api.stripped.js'))
         .pipe(wrapper({
-            header: '(function (global) {',
-            footer: '})(this);'
+            header: '(function (global) {\n',
+            footer: '\n})(this);'
         }))
+        .pipe(eslint(eslintRules))
+        .pipe(eslint.format())
+        .pipe(eslint.failAfterError())
         .pipe(gulp.dest('./build/'));
 });
 
@@ -77,6 +85,13 @@ gulp.task('release.stripped', ['debug.stripped'], function () {
             extname: '.min.js'
         }))
         .pipe(gulp.dest('./build/'));
+});
+
+gulp.task('eslint', function () {
+    return gulp.src('src/*/**/*.js')
+        .pipe(eslint(eslintRules))
+        .pipe(eslint.format())
+        .pipe(eslint.failAfterError());
 });
 
 gulp.task('default', ['debug', 'debug.stripped', 'release', 'release.stripped']);

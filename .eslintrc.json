@@ -1,0 +1,60 @@
+{
+    "extends": "eslint:recommended",
+    "globals": {
+        "ns": true
+    },
+    "rules": {
+        "array-callback-return": "error",
+        "block-scoped-var": "error",
+        "consistent-return": "error",
+        "curly": "error",
+        "dot-notation": "error",
+        "guard-for-in": "error",
+        "no-alert": "error",
+        "no-caller": "error",
+        "no-eval": "error",
+        "no-extend-native": "error",
+        "no-extra-bind": "error",
+        "no-implied-eval": "error",
+        "no-invalid-this": "error",
+        "no-lone-blocks": "error",
+        "no-loop-func": "error",
+        "no-proto": "error",
+        "no-return-assign": "error",
+        "no-self-compare": "error",
+        "no-unused-expressions": "error",
+        "no-useless-call": "error",
+        "no-useless-concat": "error",
+        "no-with": "error",
+        "radix": "error",
+        "yoda": [
+            "error",
+            "never"
+        ],
+        "no-implicit-coercion": "error",
+        "no-new-func": "error",
+        "no-new-wrappers": "error",
+        "no-new": "error",
+        "no-void": "error",
+        "array-bracket-spacing": [
+            "error",
+            "never"
+        ],
+        "brace-style": [
+            "error",
+            "1tbs"
+        ],
+        "comma-dangle": "error",
+        "comma-spacing": [
+            "error", {
+                "before": false,
+                "after": true
+            }
+        ],
+        "comma-style": [
+            "error",
+            "last"
+        ],
+        "consistent-this": "error"
+    }
+}

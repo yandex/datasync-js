@@ -73,11 +73,13 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _getHttpSnapshot: function () {
+            var options = this._options;
+
             return http.getSnapshot(this._options).then(function (res) {
                 if (res.code == 200) {
                     return this._initDataset(Dataset.json.deserialize(
                         res.data, {
-                            collection_id: this._options.collection_id
+                            collection_id: options.collection_id
                         }
                     ));
                 } else {
@@ -89,6 +91,8 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _initDataset: function (dataset, parameters) {
+            var options = this._options;
+
             this._dataset = dataset;
 
             if (parameters && parameters.need_update) {

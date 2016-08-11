@@ -14,6 +14,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
             if (!allowedContext(options.context)) {
                 return fail('Invalid `options.context` Value');
             }
+            return null;
         },
         allowedContext = function (context) {
             return context && config.contexts[context];

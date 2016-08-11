@@ -96,7 +96,9 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
                     db.callbacks.slice().forEach(function (callback) {
                         try {
                             callback(revision);
-                        } catch (e) {}
+                        } catch (e) {
+                            // do nothing
+                        }
                     });
                 }
             },

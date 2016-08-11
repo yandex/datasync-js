@@ -1,7 +1,8 @@
 ns.modules.define('cloud.dataSyncApi.Value', [
     'component.util',
-    'cloud.Error'
-], function (provide, util, Error) {
+    'cloud.Error',
+    'global'
+], function (provide, util, Error, global) {
     /**
      * @name cloud.dataSyncApi.Value
      * @class Объект, представляющий значение поля записи.
@@ -256,7 +257,8 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                 if (value == null) {
                     return 'null';
                 } else if (typeof global.ArrayBuffer != 'undefined' && (
-                        value instanceof ArrayBuffer || (value.buffer && value.buffer instanceof ArrayBuffer)
+                        value instanceof global.ArrayBuffer ||
+                        (value.buffer && value.buffer instanceof global.ArrayBuffer)
                     )) {
                     return 'binary'
                 } else if (value instanceof Date) {
@@ -265,7 +267,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                     return 'boolean';
                 } else if (value instanceof Number) {
                     return 'double';
-                } else if (Array.isArray(value)) {
+                } else if (global.Array.isArray(value)) {
                     return 'list';
                 } else {
                     return 'string';
@@ -291,10 +293,10 @@ ns.modules.define('cloud.dataSyncApi.Value', [
                 return value instanceof Date ? value.toISOString() : value;
             case 'binary':
                 if (typeof global.ArrayBuffer != 'undefined') {
-                    if (value instanceof ArrayBuffer) {
-                        return global.btoa(String.fromCharCode.apply(null, new Uint8Array(value)));
-                    } else if (value.buffer && value.buffer instanceof ArrayBuffer) {
-                        return global.btoa(String.fromCharCode.apply(null, new Uint8Array(value.buffer)));
+                    if (value instanceof global.ArrayBuffer) {
+                        return global.btoa(String.fromCharCode.apply(null, new global.Uint8Array(value)));
+                    } else if (value.buffer && value.buffer instanceof global.ArrayBuffer) {
+                        return global.btoa(String.fromCharCode.apply(null, new global.Uint8Array(value.buffer)));
                     } else {
                         return value.toString();
                     }
@@ -335,7 +337,7 @@ ns.modules.define('cloud.dataSyncApi.Value', [
 
         var length = value.length,
             outLength = length * 3 + 1 >> 2,
-            result = new Uint8Array(outLength),
+            result = new global.Uint8Array(outLength),
             mod3, mod4, int24 = 0;
 
         for (var outIndex = 0, inIndex = 0; inIndex < length; inIndex++) {

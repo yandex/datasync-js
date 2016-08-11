@@ -312,7 +312,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
                         }).then(
                             function (revision) {
                                 delta.revision = revision;
-                                dataset.applyDeltas([ delta ]);
+                                dataset.applyDeltas([delta]);
                                 success();
                                 this._notify('update', revision);
                             },
@@ -432,7 +432,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
     function prepareOperation (dataset, parameters, politicsKey) {
         var operations = parameters.operations,
-            result = dataset.dryRun(parameters.base_revision, operations);
+            result = dataset.dryRun(parameters.base_revision, operations),
             conflicts = result.conflicts;
 
         if (conflicts.length && politicsKey) {

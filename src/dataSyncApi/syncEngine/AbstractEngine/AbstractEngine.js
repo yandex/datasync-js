@@ -2,9 +2,8 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'global',
     'vow',
     'component.util',
-    'cloud.dataSyncApi.http',
-    'cloud.Error'
-], function (provide, global, vow, util, http, Error) {
+    'cloud.dataSyncApi.http'
+], function (provide, global, vow, util, http) {
     var AbstractEngine = function (options) {
             this._options = options || {};
             this._databases = {};
@@ -17,7 +16,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
 
     util.defineClass(AbstractEngine, {
         addDatabase: function (databases) {
-            databases = [].concat.call([], databases);
+            databases = [].concat(databases);
             databases.forEach(function (database) {
                 this._databases[this.getDatabaseKey(database)] = {
                     database: database,
@@ -28,7 +27,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         removeDatabase: function (databases) {
-            databases = [].concat.call([], databases);
+            databases = [].concat(databases);
             databases.forEach(function (database) {
                 delete this._databases[this.getDatabaseKey(database)];
             }, this);

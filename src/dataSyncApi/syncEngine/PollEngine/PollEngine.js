@@ -41,7 +41,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.PollEngine', [
                 global.clearTimeout(this._updateTimeout);
                 this._updateTimeout = null;
             }
-            PushEngine.superclass.fail.call(this, e);
+            PollEngine.superclass.fail.call(this, e);
         }
     });
 

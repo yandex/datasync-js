@@ -1,8 +1,8 @@
 ns.modules.define('global', function (provide) {
     provide(global);
 });
-if (typeof module == 'object') {
-    module.exports = ns;
+if (typeof global.module == 'object') {
+    global.module.exports = ns;
 } else {
     var ya = global.ya || (global.ya = {
             modules: ns.modules,

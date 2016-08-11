@@ -19,14 +19,16 @@
         "streamqueue": "0.1.x",
         "xmlhttprequest": "1.x.x",
         "mocha": "2.x.x",
-        "sinon": "1.x.x"
+        "sinon": "1.x.x",
+        "gulp-eslint": "3.x.x"
     },
-    "engine": "node >= 0.10.28",
+    "engine": "node >= 4",
     "scripts": {
         "debug": "gulp debug",
         "release": "gulp release",
         "debug.stripped": "gulp debug.stripped",
         "release.stripped": "gulp release.stripped",
+        "eslint": "gulp eslint",
         "all": "gulp",
         "clean": "gulp clean",
         "watch": "gulp watch",

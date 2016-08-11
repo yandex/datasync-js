@@ -1,9 +1,8 @@
 ns.modules.define('component.xhr', [
     'global',
     'vow',
-    'cloud.Error',
-    'cloud.dataSyncApi.config'
-], function (provide, global, vow, Error, config) {
+    'cloud.Error'
+], function (provide, global, vow, Error) {
     var XMLHttpRequest = global.XMLHttpRequest,
         parseHeaders = function (headers) {
             return headers.split('\u000d\u000a').reduce(function (result, line) {

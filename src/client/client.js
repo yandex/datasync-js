@@ -68,7 +68,9 @@ Client.prototype.initialize = function (options) {
                                     global.clearInterval(intervalId);
                                     deferred.resolve(this._token);
                                 }
-                            } catch (e) {}
+                            } catch (e) {
+                                // do nothing
+                            }
                         }
                     }.bind(this), 100);
                 } else {
