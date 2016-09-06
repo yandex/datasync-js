@@ -9,7 +9,8 @@ var ContactListModel = function (options) {
             database_id: this._databaseId,
             context: 'app',
             create_if_not_exists: true,
-            use_client_storage: true
+            use_client_storage: true,
+            collection_id: this._collectionId
         }).then(function (database) {
             this._database = database;
             return this;
