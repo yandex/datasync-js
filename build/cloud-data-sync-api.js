@@ -7315,7 +7315,10 @@ ns.modules.define('cloud.dataSyncApi.http', [
 
         getSnapshot: function (options) {
             return check(options) || addAuthorization(options, {
-                parse: true
+                parse: true,
+                queryParams: {
+                    collection_id: options && options.collection_id
+                }
             }).then(function (params) {
                 return xhr(
                     config.apiHost + 'v1/data/' +
