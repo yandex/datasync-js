@@ -52,7 +52,9 @@ Building
   2. Run `npm run debug` or `npm run release` to build debug or release version of the API respectively. Result will be placed into './build/' folder
   3. Run `npm run watch` to make gulp watching file changes and preforming debug build automatically
 
-You may get latest build from Yandex CDN: https://cloud-api.yandex.net/static/datasync-jsapi/v1/cloud-data-sync-api.js
+You may get latest build from:
+  * npm: `npm install yandex-data-sync-js-api`
+  * Yandex CDN: https://cloud-api.yandex.net/static/datasync-jsapi/v1/cloud-data-sync-api.js
 
 Testing
 -------
