@@ -1,8 +1,8 @@
 ns.modules.define('component.xhr', [
     'global',
-    'vow',
+    'Promise',
     'cloud.Error'
-], function (provide, global, vow, Error) {
+], function (provide, global, Promise, Error) {
     var XMLHttpRequest = global.XMLHttpRequest,
         parseHeaders = function (headers) {
             return headers.split('\u000d\u000a').reduce(function (result, line) {
@@ -31,7 +31,7 @@ ns.modules.define('component.xhr', [
      * автоматически разобрать заголовки ответа и сформировать JSON-объект,
      * false — оставить строкой.
      * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * полученными данными, либо отклонён с ошибкой.
      */
     provide(function (baseUrl, options) {
@@ -43,8 +43,7 @@ ns.modules.define('component.xhr', [
                 }).join('&');
         }
 
-        var deferred = vow.defer(),
-            xhr = new XMLHttpRequest(),
+        var xhr = new XMLHttpRequest(),
             headers = options.headers || {},
             method = options.method || 'GET';
 
@@ -55,53 +54,59 @@ ns.modules.define('component.xhr', [
             headers['X-Requested-With'] = 'XMLHttpRequest';
         }
 
-        xhr.onload = function () {
-            var result = {
-                    code: this.status,
-                    data: this.responseText,
-                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
-                        this.getAllResponseHeaders() :
-                        parseHeaders(this.getAllResponseHeaders())
-                };
+        return new Promise(function(resolve, reject) {
+            xhr.onload = function () {
+                var result = {
+                        code: this.status,
+                        data: this.responseText,
+                        headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
+                            this.getAllResponseHeaders() :
+                            parseHeaders(this.getAllResponseHeaders())
+                    };
 
-            if (options.parse) {
-                try {
-                    result.data = JSON.parse(result.data);
-                } catch (e) {
-                    deferred.reject(new Error({
-                        message: 'JSON Parse Error ' + result.data
-                    }));
+                if (options.parse) {
+                    try {
+                        result.data = JSON.parse(result.data);
+                    } catch (e) {
+                        reject(new Error({
+                            message: 'JSON Parse Error ' + result.data
+                        }));
+                    }
                 }
+                resolve(result);
+            };
+
+            xhr.onerror = function () {
+                reject(new Error({
+                    code: 500
+                }));
+            };
+
+            xhr.open(method, baseUrl, true);
+
+            Object.keys(headers).forEach(function (key) {
+                xhr.setRequestHeader(key, headers[key]);
+            });
+            if (options.withCredentials) {
+                xhr.withCredentials = true;
             }
-            deferred.resolve(result);
-        };
 
-        xhr.onerror = function () {
-            deferred.reject(new Error({
-                code: 500
-            }));
-        };
+            if (typeof options.data != 'undefined') {
+                xhr.send(typeof options.data == 'string' ?
+                    options.data :
+                    JSON.stringify(options.data)
+                );
+            } else {
+                xhr.send();
+            }
 
-        xhr.open(method, baseUrl, true);
-
-        Object.keys(headers).forEach(function (key) {
-            xhr.setRequestHeader(key, headers[key]);
-        });
-        if (options.withCredentials) {
-            xhr.withCredentials = true;
-        }
-
-        if (typeof options.data != 'undefined') {
-            xhr.send(typeof options.data == 'string' ?
-                options.data :
-                JSON.stringify(options.data)
-            );
-        } else {
-            xhr.send();
-        }
-
-        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
-            if (e instanceof vow.TimedOutError) {
+            global.setTimeout(function() {
+                reject(new Error({
+                    message: 'ERRTIMEOUT'
+                }));
+            }, options.timeout || 30000);
+        }).catch(function (e) {
+            if (e && e.message === 'ERRTIMEOUT') {
                 throw new Error({
                     code: 500,
                     message: 'Timeout Exceeded'

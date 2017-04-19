@@ -6,14 +6,14 @@ if (typeof XMLHttpRequest == 'undefined') {
 }
 
 ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
-    'vow',
+    'Promise',
     'cloud.dataSyncApi.cache',
     'cloud.dataSyncApi.Database',
     'cloud.dataSyncApi.Dataset',
     'cloud.dataSyncApi.DatasetController',
     'cloud.dataSyncApi.http',
     'test.util'
-], function (provide, vow, cache, Database, Dataset, DatasetController, http, util) {
+], function (provide, Promise, cache, Database, Dataset, DatasetController, http, util) {
     var params = typeof process != 'undefined' ?
              Object.keys(process.env).reduce(function (params, key) {
                  if (key.indexOf('npm_config_') == 0) {
@@ -44,7 +44,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
                 }, 100);
             }
 
-            vow.all([
+            Promise.all([
                 http.deleteDatabase(defaultParams),
                 cache.clear()
             ]).then(end, done);
@@ -53,7 +53,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
     describe('cloud.dataSyncApi.DatasetController', function () {
         var getFailer = function (done) {
                 return function (e) {
-                    vow.all([
+                    Promise.all([
                         cache.clear(),
                         http.deleteDatabase(defaultParams)
                     ]).always(function () {
@@ -83,7 +83,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
                             promises.push(http.postDeltas(deltas));
                         }
 
-                        return vow.all(promises).then(function () {
+                        return Promise.all(promises).then(function () {
                             return (new Database(defaultParams));
                         });
                     });
@@ -102,7 +102,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
                     throw new Error('getSnapshot must not be called');
                 }),
                 undoDeltas = util.swapMethod(http, 'getDeltas', function () {
-                    return vow.resolve({
+                    return Promise.resolve({
                         code: 200,
                         data: {
                             items: []
@@ -125,7 +125,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
 
         it('Init from corrupted cache', function (done) {
             var undoDeltas = util.swapMethod(http, 'getDeltas', function () {
-                    return vow.resolve({
+                    return Promise.resolve({
                         code: 200,
                         data: {
                             items: []
@@ -173,7 +173,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
                     throw new Error();
                 }),
                 undoDeltas = util.swapMethod(http, 'getDeltas', function () {
-                    return vow.resolve({
+                    return Promise.resolve({
                         code: 200,
                         data: {
                             revision: util.snapshotJson.revision + 1,
@@ -204,7 +204,7 @@ ya.modules.define('test.cloud.dataSyncApi.DatasetController', [
             function testSaving () {
                 undoDeltas();
                 undoDeltas = util.swapMethod(http, 'getDeltas', function () {
-                    return vow.resolve({
+                    return Promise.resolve({
                         code: 200,
                         data: {
                             items: []

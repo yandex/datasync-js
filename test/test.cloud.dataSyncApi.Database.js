@@ -6,7 +6,7 @@ if (typeof XMLHttpRequest == 'undefined') {
 }
 
 ya.modules.define('test.cloud.dataSyncApi.Database', [
-    'vow',
+    'Promise',
     'test.util',
     'cloud.dataSyncApi.cache',
     'cloud.dataSyncApi.Database',
@@ -17,7 +17,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.http',
     'cloud.Error',
     'cloud.dataSyncApi.config'
-], function (provide, vow, util, cache, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
+], function (provide, Promise, util, cache, Database, Record, Operation, FieldOperation, Value, http, Error, config) {
     var params = util.extractParams(),
         token = params.token,
         context = params.context || 'app',
@@ -50,7 +50,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                 }, 100);
             }
 
-            vow.all([
+            Promise.all([
                 http.deleteDatabase(defaultParams),
                 cache.clear()
             ]).then(end, done);
@@ -59,7 +59,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
     describe('cloud.dataSyncApi.Database', function () {
         var getFailer = function (done) {
                 return function (e) {
-                    vow.all([
+                    Promise.all([
                         http.deleteDatabase(defaultParams),
                         cache.clear()
                     ]).then(function () {
@@ -532,7 +532,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
                         database.update()
                     ];
 
-                vow.all(promises).then(function (res) {
+                Promise.all(promises).then(function (res) {
                     expect(res[0] > 0).to.be.ok();
                     expect(res[1] <= res[0]).to.be.ok();
                     expect(res[2] > res[1]).to.be.ok();
@@ -593,7 +593,7 @@ ya.modules.define('test.cloud.dataSyncApi.Database', [
 
             function testUpdate (database) {
                 http.getDeltas = function () {
-                    return vow.resolve({
+                    return Promise.resolve({
                         code: 410
                     });
                 };

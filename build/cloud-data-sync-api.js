@@ -447,7 +447,7 @@ var module = { exports: {} }, exports = {};
 /**
  * @module vow
  * @author Filatov Dmitry <dfilatov@yandex-team.ru>
- * @version 0.4.12
+ * @version 0.4.15
  * @license
  * Dual licensed under the MIT and GPL licenses:
  *   * http://www.opensource.org/licenses/mit-license.php
@@ -460,7 +460,8 @@ var undef,
     nextTick = (function() {
         var fns = [],
             enqueueFn = function(fn) {
-                return fns.push(fn) === 1;
+                fns.push(fn);
+                return fns.length === 1;
             },
             callFns = function() {
                 var fnsToCall = fns, i = 0, len = fns.length;
@@ -589,7 +590,21 @@ var undef,
         return function(val) {
             onFulfilled.call(this, val, idx);
         };
-    };
+    },
+    emitUnhandledRejection = global.PromiseRejectionEvent?
+        function(reason, promise) {
+            new global.PromiseRejectionEvent(
+                'unhandledrejection',
+                {
+                    promise : promise,
+                    reason : reason
+                });
+        } :
+        typeof process === 'object' && process.emit?
+            function(reason, promise) {
+                process.emit('unhandledRejection', reason, promise);
+            } :
+            function() {};
 
 /**
  * @class Deferred
@@ -742,6 +757,7 @@ var PROMISE_STATUS = {
 var Promise = function(resolver) {
     this._value = undef;
     this._status = PROMISE_STATUS.PENDING;
+    this._shouldEmitUnhandledRejection = true;
 
     this._fulfilledCallbacks = [];
     this._rejectedCallbacks = [];
@@ -815,6 +831,7 @@ Promise.prototype = /** @lends Promise.prototype */ {
      * @returns {vow:Promise} A new promise, see https://github.com/promises-aplus/promises-spec for details
      */
     then : function(onFulfilled, onRejected, onProgress, ctx) {
+        this._shouldEmitUnhandledRejection = false;
         var defer = new Deferred();
         this._addCallbacks(defer, onFulfilled, onRejected, onProgress, ctx);
         return defer.promise();
@@ -1015,15 +1032,21 @@ Promise.prototype = /** @lends Promise.prototype */ {
         this._status = PROMISE_STATUS.RESOLVED;
 
         if(val && !!val._vow) { // shortpath for vow.Promise
-            val.isFulfilled()?
-                this._fulfill(val.valueOf()) :
-                val.isRejected()?
-                    this._reject(val.valueOf()) :
-                    val.then(
-                        this._fulfill,
-                        this._reject,
-                        this._notify,
-                        this);
+            if(val.isFulfilled()) {
+                this._fulfill(val.valueOf());
+            }
+            else if(val.isRejected()) {
+                val._shouldEmitUnhandledRejection = false;
+                this._reject(val.valueOf());
+            }
+            else {
+                val.then(
+                    this._fulfill,
+                    this._reject,
+                    this._notify,
+                    this);
+            }
+
             return;
         }
 
@@ -1096,6 +1119,16 @@ Promise.prototype = /** @lends Promise.prototype */ {
         this._value = reason;
 
         this._callCallbacks(this._rejectedCallbacks, reason);
+
+        if(!this._rejectedCallbacks.length) {
+            var _this = this;
+            nextTick(function() {
+                if(_this._shouldEmitUnhandledRejection) {
+                    emitUnhandledRejection(reason, _this);
+                }
+            });
+        }
+
         this._fulfilledCallbacks = this._rejectedCallbacks = this._progressCallbacks = undef;
     },
 
@@ -1111,6 +1144,10 @@ Promise.prototype = /** @lends Promise.prototype */ {
         else if(onProgress && !isFunction(onProgress)) {
             ctx = onProgress;
             onProgress = undef;
+        }
+
+        if(onRejected) {
+            this._shouldEmitUnhandledRejection = false;
         }
 
         var cb;
@@ -1776,10 +1813,10 @@ defineAsGlobal && (global.vow = vow);
 
 })(typeof window !== 'undefined'? window : global);
 
-ns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);
+ns.Promise = module.exports.Promise; ns.modules.define('Promise', function (provide) { provide(ns.Promise); }); })(ns);
 /* eslint-enable */
 /* eslint-disable */(function (ns) {
-var module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;
+var module = { exports: {} }, exports = {}, Promise = ns.Promise;
 /*!
     localForage -- Offline Storage, Improved
     Version 1.3.0
@@ -3945,76 +3982,74 @@ var Client = function () {
  * @param {String} [options.token] OAuth-токен. Если
  * не передан, будет показано окно с диалогом авторизации;
  * в этом случае параметр key обязателен.
- * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+ * @returns {Promise} Объект-Promise, который будет либо подтверждён
  * при успешной аутентификации, либо отклонён в противном случае.
  * @static
  */
 Client.prototype.initialize = function (options) {
-    var deferred = ns.vow.defer();
-
-    ns.modules.require([
-        'cloud.dataSyncApi.config',
-        'component.util',
-        'cloud.Error',
-        'vow',
-        'global'
-    ], (function (config, util, Error, vow, global) {
-        if (!options) {
-            deferred.reject(new Error({
-                message: '`options` Parameter Required'
-            }));
-        } else if (!options.key && !options.token && !options.with_credentials) {
-            deferred.reject(new Error({
-                message: 'Either `options.key` or `options.token` Parameter Required'
-            }));
-        } else {
-            if (options.token) {
-                this._token = options.token;
-                this._initialized = true;
-                deferred.resolve();
-            } else if (options.with_credentials) {
-                this._withCredentials = true;
-                this._initialized = true;
-                deferred.resolve();
+    return new ns.Promise(function(resolve, reject) {
+        ns.modules.require([
+            'cloud.dataSyncApi.config',
+            'component.util',
+            'cloud.Error',
+            'Promise',
+            'global'
+        ], (function (config, util, Error, Promise, global) {
+            if (!options) {
+                reject(new Error({
+                    message: '`options` Parameter Required'
+                }));
+            } else if (!options.key && !options.token && !options.with_credentials) {
+                reject(new Error({
+                    message: 'Either `options.key` or `options.token` Parameter Required'
+                }));
             } else {
-                var oauthWindow = global.open(
-                    config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
-                    'oauth',
-                    config.oauthWindowParameters
-                );
-
-                if (oauthWindow) {
-                    var intervalId = global.setInterval(function () {
-                        if (oauthWindow.closed) {
-                            global.clearInterval(intervalId);
-                            deferred.reject(new Error({
-                                code: 401
-                            }));
-                        } else {
-                            try {
-                                var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
-                                if (match) {
-                                    this._token = match[1];
-                                    this._initialized = true;
-                                    oauthWindow.close();
-                                    global.clearInterval(intervalId);
-                                    deferred.resolve(this._token);
-                                }
-                            } catch (e) {
-                                // do nothing
-                            }
-                        }
-                    }.bind(this), 100);
+                if (options.token) {
+                    this._token = options.token;
+                    this._initialized = true;
+                    resolve();
+                } else if (options.with_credentials) {
+                    this._withCredentials = true;
+                    this._initialized = true;
+                    resolve();
                 } else {
-                    deferred.reject(new Error({
-                        code: 401
-                    }));
+                    var oauthWindow = global.open(
+                        config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
+                        'oauth',
+                        config.oauthWindowParameters
+                    );
+
+                    if (oauthWindow) {
+                        var intervalId = global.setInterval(function () {
+                            if (oauthWindow.closed) {
+                                global.clearInterval(intervalId);
+                                reject(new Error({
+                                    code: 401
+                                }));
+                            } else {
+                                try {
+                                    var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
+                                    if (match) {
+                                        this._token = match[1];
+                                        this._initialized = true;
+                                        oauthWindow.close();
+                                        global.clearInterval(intervalId);
+                                        resolve(this._token);
+                                    }
+                                } catch (e) {
+                                    // do nothing
+                                }
+                            }
+                        }.bind(this), 100);
+                    } else {
+                        reject(new Error({
+                            code: 401
+                        }));
+                    }
                 }
             }
-        }
-    }).bind(this));
-
-    return deferred.promise();
+        }).bind(this));
+    }.bind(this));
 };
 
 /**
@@ -4089,7 +4124,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {String} [options.collection_id] Фильтр по имени коллекции. При установке
      * этого фильтра база будет содержать только объекты с указанным collection_id, все
      * объекты с отличным от collection_id идентификатором коллекции будут пропускаться.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён экземпляром
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён экземпляром
      * класса {@link cloud.dataSyncApi.Database} при успешном открытии базы данных, либо отклонён
      * с одной из следующих ошибок:
      * <ul>
@@ -4226,7 +4261,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * числом баз данных, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -4262,7 +4297,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * метаданными БД, либо отклонён с ошибкой.
      * Метаданные БД представляют собой JSON-объект со следующими полями:
      * <ul>
@@ -4313,7 +4348,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * массивом метаданных БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -4355,7 +4390,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {Boolean} [options.ignore_existing = false] true — не генерировать
      * исключение, если база данных с таким идентфикатором уже существует, false —
      * сгенерировать исключение с кодом 409.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * ревизией созданной БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -4398,7 +4433,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * массивом метаданных созданной БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -4423,24 +4458,22 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
     /**
      * Закрывает все текущие открытые соединения со всеми
      * базами данных.
-     * @returns {vow.Promise} Объект-promise, который будет
+     * @returns {Promise} Объект-promise, который будет
      * подтверждён по завершении операции.
      */
     closeAllDatabases: function () {
-        return this._require(['cloud.dataSyncApi.Database']).then(function (Database) {
+        return this._require(['cloud.dataSyncApi.Database']).spread(function (Database) {
             Database.closeAll();
             return null;
         });
     },
 
     _require: function (modules) {
-        var deferred = ns.vow.defer();
-
-        ns.modules.require(modules, function () {
-            deferred.resolve([].slice.call(arguments));
+        return new ns.Promise(function(resolve) {
+            ns.modules.require(modules, function () {
+                resolve([].slice.call(arguments));
+            });
         });
-
-        return deferred.promise();
     },
 
     _castMetadata: function (data) {
@@ -4461,16 +4494,14 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
             code = 400;
         }
 
-        var deferred = ns.vow.defer();
-
-        ns.modules.require(['cloud.Error'], function (Error) {
-            deferred.reject(new Error({
-                code: code,
-                message: message
-            }));
+        return new ns.Promise(function(resolve, reject) {
+            ns.modules.require(['cloud.Error'], function (Error) {
+                reject(new Error({
+                    code: code,
+                    message: message
+                }));
+            });
         });
-
-        return deferred.promise();
     }
 };
 
@@ -4643,9 +4674,9 @@ ns.modules.define('component.util', function (provide) {
 });
 ns.modules.define('component.xhr', [
     'global',
-    'vow',
+    'Promise',
     'cloud.Error'
-], function (provide, global, vow, Error) {
+], function (provide, global, Promise, Error) {
     var XMLHttpRequest = global.XMLHttpRequest,
         parseHeaders = function (headers) {
             return headers.split('\u000d\u000a').reduce(function (result, line) {
@@ -4674,7 +4705,7 @@ ns.modules.define('component.xhr', [
      * автоматически разобрать заголовки ответа и сформировать JSON-объект,
      * false — оставить строкой.
      * @param {Number} [options.timeout = 30000] Время ожидания ответа, в мс.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * полученными данными, либо отклонён с ошибкой.
      */
     provide(function (baseUrl, options) {
@@ -4686,8 +4717,7 @@ ns.modules.define('component.xhr', [
                 }).join('&');
         }
 
-        var deferred = vow.defer(),
-            xhr = new XMLHttpRequest(),
+        var xhr = new XMLHttpRequest(),
             headers = options.headers || {},
             method = options.method || 'GET';
 
@@ -4698,53 +4728,59 @@ ns.modules.define('component.xhr', [
             headers['X-Requested-With'] = 'XMLHttpRequest';
         }
 
-        xhr.onload = function () {
-            var result = {
-                    code: this.status,
-                    data: this.responseText,
-                    headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
-                        this.getAllResponseHeaders() :
-                        parseHeaders(this.getAllResponseHeaders())
-                };
+        return new Promise(function(resolve, reject) {
+            xhr.onload = function () {
+                var result = {
+                        code: this.status,
+                        data: this.responseText,
+                        headers: typeof options.parseResponseHeaders != 'undefined' && !options.parseResponseHeaders ?
+                            this.getAllResponseHeaders() :
+                            parseHeaders(this.getAllResponseHeaders())
+                    };
 
-            if (options.parse) {
-                try {
-                    result.data = JSON.parse(result.data);
-                } catch (e) {
-                    deferred.reject(new Error({
-                        message: 'JSON Parse Error ' + result.data
-                    }));
+                if (options.parse) {
+                    try {
+                        result.data = JSON.parse(result.data);
+                    } catch (e) {
+                        reject(new Error({
+                            message: 'JSON Parse Error ' + result.data
+                        }));
+                    }
                 }
+                resolve(result);
+            };
+
+            xhr.onerror = function () {
+                reject(new Error({
+                    code: 500
+                }));
+            };
+
+            xhr.open(method, baseUrl, true);
+
+            Object.keys(headers).forEach(function (key) {
+                xhr.setRequestHeader(key, headers[key]);
+            });
+            if (options.withCredentials) {
+                xhr.withCredentials = true;
             }
-            deferred.resolve(result);
-        };
 
-        xhr.onerror = function () {
-            deferred.reject(new Error({
-                code: 500
-            }));
-        };
+            if (typeof options.data != 'undefined') {
+                xhr.send(typeof options.data == 'string' ?
+                    options.data :
+                    JSON.stringify(options.data)
+                );
+            } else {
+                xhr.send();
+            }
 
-        xhr.open(method, baseUrl, true);
-
-        Object.keys(headers).forEach(function (key) {
-            xhr.setRequestHeader(key, headers[key]);
-        });
-        if (options.withCredentials) {
-            xhr.withCredentials = true;
-        }
-
-        if (typeof options.data != 'undefined') {
-            xhr.send(typeof options.data == 'string' ?
-                options.data :
-                JSON.stringify(options.data)
-            );
-        } else {
-            xhr.send();
-        }
-
-        return deferred.promise().timeout(options.timeout || 30000).fail(function (e) {
-            if (e instanceof vow.TimedOutError) {
+            setTimeout(function() {
+                reject(new Error({
+                    message: 'ERRTIMEOUT'
+                }));
+            }, options.timeout || 30000);
+        }).catch(function (e) {
+            if (e && e.message === 'ERRTIMEOUT') {
                 throw new Error({
                     code: 500,
                     message: 'Timeout Exceeded'
@@ -4817,12 +4853,12 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.politics',
     'cloud.Error',
     'component.util',
-    'vow'
+    'Promise'
 ], function (provide,
     config, http, client,
     DatasetController, watcher,
     Transaction, Operation, politics,
-    Error, util, vow) {
+    Error, util, Promise) {
 
     var databases = [];
         /**
@@ -4948,7 +4984,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
         /**
          * Синхронизирует БД с удалённым сервером.
-         * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+         * @returns {Promise} Объект-Promise, который будет либо подтверждён
          * новой ревизией БД, либо отклонён с одной из следующих ошибок:
          * <ul>
          *     <li>401 — пользователь не авторизован;</li>
@@ -5001,33 +5037,33 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
             if (gone) {
                 return gone;
-            } else {
-                var deferred = vow.defer();
+            }   
 
-                this._pendingCallbacks.push([callback, deferred]);
+            return new Promise(function(resolve, reject) {
+                this._pendingCallbacks.push([callback, resolve, reject]);
                 if (!this._locked) {
                     this._proceedPendingQueue();
                 }
+            }.bind(this));
 
-                return deferred.promise();
-            }
         },
 
         _proceedPendingQueue: function () {
             var parameters = this._pendingCallbacks.shift(),
                 callback = parameters[0],
-                deferred = parameters[1];
+                resolve = parameters[1],
+                reject = parameters[2];
 
             this._locked = true;
 
             callback().then(function (res) {
-                deferred.resolve(res);
+                resolve(res);
                 this._locked = false;
                 if (this._pendingCallbacks.length) {
                     this._proceedPendingQueue();
                 }
             }, function (e) {
-                deferred.reject(e);
+                reject(e);
                 this._locked = false;
                 if (this._pendingCallbacks.length) {
                     this._proceedPendingQueue();
@@ -5072,103 +5108,97 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         _patch: function (parameters, politicsKey) {
-            var deferred = vow.defer(),
-                dataset = this._datasetController.getDataset(),
-                delta_id = parameters.delta_id,
+            return new Promise(function(resolve, reject) {
+                var dataset = this._datasetController.getDataset(),
+                    delta_id = parameters.delta_id,
 
-                success = function () {
-                    deferred.resolve(dataset.getRevision());
-                },
+                    success = function () {
+                        resolve(dataset.getRevision());
+                    },
 
-                fail = (function (e) {
-                    if (e.postDeltaFail) {
-                        this._possiblyMissedDelta = e.postDeltaFail;
-                    }
+                    fail = (function (e) {
+                        if (e.postDeltaFail) {
+                            this._possiblyMissedDelta = e.postDeltaFail;
+                        }
 
-                    deferred.reject(e);
-                }).bind(this);
+                        reject(e);
+                    }).bind(this);
 
-            if (this._missedDelta && delta_id == this._missedDelta) {
-                this._missedDelta = null;
-                success();
-            } else {
-                var preparedOperation = prepareOperation(dataset, parameters, politicsKey),
-                    operations = preparedOperation.operations,
-                    conflicts = preparedOperation.conflicts,
-                    revisionHistory = preparedOperation.revisionHistory,
-                    delta = {
-                        base_revision: this.getRevision(),
-                        delta_id: parameters.delta_id,
-                        changes: operations.map(Operation.json.serialize)
-                    };
-
-                if (conflicts.length) {
-                    fail(new Error({
-                        code: 409,
-                        conflicts: conflicts,
-                        revisionHistory: revisionHistory
-                    }));
+                if (this._missedDelta && delta_id == this._missedDelta) {
+                    this._missedDelta = null;
+                    success();
                 } else {
-                    if (operations.length) {
-                        this._postDeltas({
-                            database_id: this._id,
-                            delta_id: delta_id,
+                    var preparedOperation = prepareOperation(dataset, parameters, politicsKey),
+                        operations = preparedOperation.operations,
+                        conflicts = preparedOperation.conflicts,
+                        revisionHistory = preparedOperation.revisionHistory,
+                        delta = {
                             base_revision: this.getRevision(),
-                            context: this._context,
-                            token: this._token,
-                            data: delta
-                        }).then(
-                            function (revision) {
-                                delta.revision = revision;
-                                dataset.applyDeltas([delta]);
-                                success();
-                                this._notify('update', revision);
-                            },
-                            function (e) {
-                                if (e.code == 409) {
-                                    this._explicitUpdate().then(
-                                        function () {
-                                            this._patch(parameters, politicsKey).then(success, fail);
-                                        },
-                                        fail,
-                                        this
-                                    );
-                                } else {
-                                    fail(e);
-                                }
-                            },
-                            this
-                        );
+                            delta_id: parameters.delta_id,
+                            changes: operations.map(Operation.json.serialize)
+                        };
+
+                    if (conflicts.length) {
+                        fail(new Error({
+                            code: 409,
+                            conflicts: conflicts,
+                            revisionHistory: revisionHistory
+                        }));
                     } else {
-                        success();
+                        if (operations.length) {
+                            this._postDeltas({
+                                database_id: this._id,
+                                delta_id: delta_id,
+                                base_revision: this.getRevision(),
+                                context: this._context,
+                                token: this._token,
+                                data: delta
+                            }).then(
+                                function (revision) {
+                                    delta.revision = revision;
+                                    dataset.applyDeltas([delta]);
+                                    success();
+                                    this._notify('update', revision);
+                                },
+                                function (e) {
+                                    if (e.code == 409) {
+                                        this._explicitUpdate().then(
+                                            function () {
+                                                this._patch(parameters, politicsKey).then(success, fail);
+                                            },
+                                            fail,
+                                            this
+                                        );
+                                    } else {
+                                        fail(e);
+                                    }
+                                },
+                                this
+                            );
+                        } else {
+                            success();
+                        }
                     }
                 }
-            }
-
-            return deferred.promise();
+            }.bind(this));
         },
 
         _postDeltas: function (delta) {
-            var deferred = vow.defer(),
-                fail = function (e) {
-                    deferred.reject(e);
-                };
-
-            http.postDeltas(delta).then(function (res) {
-                if (res.code == 200 || res.code == 201) {
-                    deferred.resolve(Number(res.headers.etag));
-                } else {
-                    if (res.code >= 500) {
-                        res.postDeltaFail = delta.delta_id;
+            return new Promise(function(resolve, reject) {
+                http.postDeltas(delta).then(function (res) {
+                    if (res.code == 200 || res.code == 201) {
+                        resolve(Number(res.headers.etag));
+                    } else {
+                        if (res.code >= 500) {
+                            res.postDeltaFail = delta.delta_id;
+                        }
+                        reject(new Error(res));
                     }
-                    fail(new Error(res));
-                }
-            }, function (e) {
-                e.postDeltaFail = delta.delta_id;
-                fail(e);
-            }, this);
-
-            return deferred.promise();
+                }, function (e) {
+                    e.postDeltaFail = delta.delta_id;
+                    reject(e);
+                }, this);
+            });
         },
 
         /**
@@ -5672,10 +5702,10 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
     'cloud.dataSyncApi.cache',
     'cloud.Error',
     'component.util',
-    'vow'
+    'Promise'
 ], function (provide,
      config, http, Dataset, cache, Error,
-     util, vow) {
+     util, Promise) {
 
     /**
      * @ignore
@@ -5772,7 +5802,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                 }, this);
             } else {
                 return this._saveSnapshot().always(function () {
-                    return vow.resolve();
+                    return Promise.resolve();
                 });
             }
         },
@@ -5785,7 +5815,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                     this._dataset
                 );
             } else {
-                return vow.resolve();
+                return Promise.resolve();
             }
         },
 
@@ -5835,7 +5865,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _onGone: function () {
-            this._gone = vow.reject({
+            this._gone = Promise.reject({
                 code: 410,
                 message: 'Database snapshot outdated'
             });
@@ -5844,24 +5874,19 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
 
     function getDeltas (options, baseRevision) {
         var deltas = [],
-            deferred = vow.defer(),
-
-            fail = function (e) {
-                deferred.reject(e);
-            },
 
             getChunk = function (baseRevision) {
                 return http.getDeltas(util.extend({}, options, {
                     base_revision: baseRevision,
                     limit: config.deltaLimit
                 })).then(function (res) {
-                    if (res.code == 200) {
-                        return res.data;
-                    } else {
-                        throw new Error({
+                    if (res.code != 200) {
+                        return Promise.reject(new Error({
                             code: res.code
-                        });
+                        }));
                     }
+
+                    return res.data;
                 });
             },
 
@@ -5874,20 +5899,13 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                         targetRevision;
 
                 if (recievedRevision == targetRevision) {
-                    onEnd();
-                } else {
-                    getChunk(recievedRevision).then(onChunk, fail);
+                    return [].concat.apply([], deltas);
                 }
-            },
 
-            onEnd = function () {
-                deltas = [].concat.apply([], deltas);
-                deferred.resolve(deltas);
+                return getChunk(recievedRevision).then(onChunk);
             };
 
-        getChunk(baseRevision).then(onChunk, fail);
-
-        return deferred.promise();
+        return getChunk(baseRevision).then(onChunk);
     }
 
     provide(DatasetController);
@@ -7071,11 +7089,11 @@ ns.modules.define('cloud.dataSyncApi.Value', [
 
 ns.modules.define('cloud.dataSyncApi.cache', [
     'localForage',
-    'vow',
+    'Promise',
     'cloud.Error',
     'cloud.dataSyncApi.config',
     'cloud.dataSyncApi.Dataset'
-], function (provide, localForage, vow, Error, config, Dataset) {
+], function (provide, localForage, Promise, Error, config, Dataset) {
     localForage.config({
         name: config.prefix,
         storeName: config.prefix
@@ -7127,7 +7145,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
             saveItem: function (key, value) {
                 return localForage.setItem(key, value).fail(function () {
                         return cache.clear().always(function () {
-                            return vow.reject(new Error({
+                            return Promise.reject(new Error({
                                 code: 500
                             }));
                         });
@@ -7147,7 +7165,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
 
         return localForage.getItem(key).then(function (data) {
             if (!data) {
-                return vow.reject(new Error({
+                return Promise.reject(new Error({
                     code: 404
                 }));
             } else {
@@ -7160,7 +7178,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
                     data = null;
                     // Something went wrong, cache is corrupted
                     return cache.clear().always(function () {
-                        return vow.reject(new Error({
+                        return Promise.reject(new Error({
                             code: 500
                         }));
                     });
@@ -7193,9 +7211,9 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'component.xhr',
     'component.util',
     'global',
-    'vow',
+    'Promise',
     'cloud.Error'
-], function (provide, config, client, xhr, util, global, vow, Error) {
+], function (provide, config, client, xhr, util, global, Promise, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -7213,7 +7231,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 message = code;
                 code = 400;
             }
-            return vow.reject(new Error({
+            return Promise.reject(new Error({
                 code: code,
                 message: message
             }));
@@ -7228,14 +7246,14 @@ ns.modules.define('cloud.dataSyncApi.http', [
 
             if (options.token) {
                 params.headers.Authorization = 'OAuth ' + options.token;
-                return vow.resolve(params);
+                return Promise.resolve(params);
             } else if (client.isInitialized()) {
                 if (client.withCredentials()) {
                     params.withCredentials = true;
                 } else {
                     params.headers.Authorization = 'OAuth ' + client.getToken();
                 }
-                return vow.resolve(params);
+                return Promise.resolve(params);
             } else {
                 if (options && (options.authorize_if_needed || typeof options.authorize_if_needed == 'undefined')) {
                     return client.initialize(options).then(function () {
@@ -7247,7 +7265,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                         return params;
                     })
                 } else {
-                    return vow.reject(new Error({
+                    return Promise.reject(new Error({
                         code: 401
                     }));
                 }
@@ -7543,10 +7561,10 @@ ns.modules.define('cloud.dataSyncApi.watcher', [
 });
 ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'global',
-    'vow',
+    'Promise',
     'component.util',
     'cloud.dataSyncApi.http'
-], function (provide, global, vow, util, http) {
+], function (provide, global, Promise, util, http) {
     var AbstractEngine = function (options) {
             this._options = options || {};
             this._databases = {};
@@ -7608,7 +7626,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         updateRevisions: function () {
-            return vow.all(Object.keys(this._databases).map(function (key) {
+            return Promise.all(Object.keys(this._databases).map(function (key) {
                 var database = this._databases[key].database,
                     callback = util.cancelableCallback(function (response) {
                         if (response.code != 200) {
@@ -7795,7 +7813,7 @@ if (typeof global.module == 'object') {
 } else {
     var ya = global.ya || (global.ya = {
             modules: ns.modules,
-            vow: ns.vow
+            Promise: ns.Promise
         });
     ya.cloud = ns.cloud;
 }

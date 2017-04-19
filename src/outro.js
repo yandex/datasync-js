@@ -6,7 +6,7 @@ if (typeof global.module == 'object') {
 } else {
     var ya = global.ya || (global.ya = {
             modules: ns.modules,
-            vow: ns.vow
+            Promise: ns.Promise
         });
     ya.cloud = ns.cloud;
 }

@@ -50,7 +50,7 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
                 return function (options, politics) {
                     expect(options.base_revision).to.be(fakeDb.getRevision());
                     callback(options.operations, politics);
-                    return ya.vow.resolve(0);
+                    return ya.Promise.resolve(0);
                 }
             },
             transaction;
@@ -58,7 +58,7 @@ ya.modules.define('test.cloud.dataSyncApi.Transaction', [
         it('constructor', function () {
             transaction = new Transaction(
                 fakeDb,
-                function () { return ya.vow.resolve() }
+                function () { return ya.Promise.resolve() }
             );
             expect(transaction.getDatabase()).to.be(fakeDb);
             expect(transaction.getBaseRevision()).to.be(fakeDb.getRevision());

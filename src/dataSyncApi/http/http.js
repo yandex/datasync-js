@@ -4,9 +4,9 @@ ns.modules.define('cloud.dataSyncApi.http', [
     'component.xhr',
     'component.util',
     'global',
-    'vow',
+    'Promise',
     'cloud.Error'
-], function (provide, config, client, xhr, util, global, vow, Error) {
+], function (provide, config, client, xhr, util, global, Promise, Error) {
     var check = function (options) {
             if (!options) {
                 return fail('`options` Parameter Required');
@@ -24,7 +24,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                 message = code;
                 code = 400;
             }
-            return vow.reject(new Error({
+            return Promise.reject(new Error({
                 code: code,
                 message: message
             }));
@@ -39,14 +39,14 @@ ns.modules.define('cloud.dataSyncApi.http', [
 
             if (options.token) {
                 params.headers.Authorization = 'OAuth ' + options.token;
-                return vow.resolve(params);
+                return Promise.resolve(params);
             } else if (client.isInitialized()) {
                 if (client.withCredentials()) {
                     params.withCredentials = true;
                 } else {
                     params.headers.Authorization = 'OAuth ' + client.getToken();
                 }
-                return vow.resolve(params);
+                return Promise.resolve(params);
             } else {
                 if (options && (options.authorize_if_needed || typeof options.authorize_if_needed == 'undefined')) {
                     return client.initialize(options).then(function () {
@@ -58,7 +58,7 @@ ns.modules.define('cloud.dataSyncApi.http', [
                         return params;
                     })
                 } else {
-                    return vow.reject(new Error({
+                    return Promise.reject(new Error({
                         code: 401
                     }));
                 }

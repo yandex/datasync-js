@@ -2,11 +2,11 @@ var expect = expect || require('expect.js'),
     ya = ya || require('../build/cloud-data-sync-api.js');
 
 ya.modules.define('test.util', [
-    'vow',
+    'Promise',
     'global',
     'cloud.dataSyncApi.Dataset',
     'cloud.dataSyncApi.Database'
-], function (provide, vow, global, Dataset, Database) {
+], function (provide, Promise, global, Dataset, Database) {
     var util = {
             snapshotJson: {
                 revision: 3,
@@ -122,11 +122,11 @@ ya.modules.define('test.util', [
             },
 
             timeouted: function (data, timeout) {
-                var deferred = vow.defer();
-                global.setTimeout(function () {
-                    deferred.resolve(data);
-                }, timeout || 0);
-                return deferred.promise();
+                return new Promise(function(resolve) {
+                    global.setTimeout(function () {
+                       resolve(data);
+                    }, timeout || 0);
+                });
             }
         };
 

@@ -15,11 +15,12 @@
  * either express or implied. See the License for the specific
  * language governing permissions and limitations under the License.
  */
-var ns = {
+var vow = global.ya && global.ya.vow || global.vow,
+    ns = {
         cloud: {},
-        vow: global.ya && global.ya.vow || global.vow,
+        Promise: vow && vow.Promise,
         modules: global.ya && global.ya.modules || global.modules
     };
-ns.modules.define('vow', function (provide) {
-    provide(ns.vow);
+ns.modules.define('Promise', function (provide) {
+    provide(ns.Promise);
 });

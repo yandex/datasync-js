@@ -5,10 +5,10 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
     'cloud.dataSyncApi.cache',
     'cloud.Error',
     'component.util',
-    'vow'
+    'Promise'
 ], function (provide,
      config, http, Dataset, cache, Error,
-     util, vow) {
+     util, Promise) {
 
     /**
      * @ignore
@@ -105,7 +105,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                 }, this);
             } else {
                 return this._saveSnapshot().always(function () {
-                    return vow.resolve();
+                    return Promise.resolve();
                 });
             }
         },
@@ -118,7 +118,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                     this._dataset
                 );
             } else {
-                return vow.resolve();
+                return Promise.resolve();
             }
         },
 
@@ -168,7 +168,7 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
         },
 
         _onGone: function () {
-            this._gone = vow.reject({
+            this._gone = Promise.reject({
                 code: 410,
                 message: 'Database snapshot outdated'
             });
@@ -177,24 +177,19 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
 
     function getDeltas (options, baseRevision) {
         var deltas = [],
-            deferred = vow.defer(),
-
-            fail = function (e) {
-                deferred.reject(e);
-            },
 
             getChunk = function (baseRevision) {
                 return http.getDeltas(util.extend({}, options, {
                     base_revision: baseRevision,
                     limit: config.deltaLimit
                 })).then(function (res) {
-                    if (res.code == 200) {
-                        return res.data;
-                    } else {
-                        throw new Error({
+                    if (res.code != 200) {
+                        return Promise.reject(new Error({
                             code: res.code
-                        });
+                        }));
                     }
+
+                    return res.data;
                 });
             },
 
@@ -207,20 +202,13 @@ ns.modules.define('cloud.dataSyncApi.DatasetController', [
                         targetRevision;
 
                 if (recievedRevision == targetRevision) {
-                    onEnd();
-                } else {
-                    getChunk(recievedRevision).then(onChunk, fail);
+                    return [].concat.apply([], deltas);
                 }
-            },
 
-            onEnd = function () {
-                deltas = [].concat.apply([], deltas);
-                deferred.resolve(deltas);
+                return getChunk(recievedRevision).then(onChunk);
             };
 
-        getChunk(baseRevision).then(onChunk, fail);
-
-        return deferred.promise();
+        return getChunk(baseRevision).then(onChunk);
     }
 
     provide(DatasetController);

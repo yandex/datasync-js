@@ -6,8 +6,8 @@ ya.modules.define('test.cloud.dataSyncApi.cache', [
     'cloud.dataSyncApi.cache',
     'cloud.dataSyncApi.Dataset',
     'localForage',
-    'vow'
-], function (provide, util, cache, Dataset, localForage, vow) {
+    'Promise'
+], function (provide, util, cache, Dataset, localForage, Promise) {
     function clearCache (done) {
         cache.clear().done(
             done,
@@ -67,7 +67,7 @@ ya.modules.define('test.cloud.dataSyncApi.cache', [
                     collection_policy: 'skip'
                 });
 
-            vow.all([
+            Promise.all([
                 cache.saveDataset('app', 'test', dataset1),
                 cache.saveDataset('app', 'test', dataset2)
             ]).done(function () {
@@ -75,7 +75,7 @@ ya.modules.define('test.cloud.dataSyncApi.cache', [
                     cache.getDatasetKey('app', 'test')
                 ).done(function (data) {
                     expect(data).to.eql(null);
-                    vow.all([
+                    Promise.all([
                         cache.getDataset('app', 'test', 'col'),
                         cache.getDataset('app', 'test', 'col_2')
                     ]).done(function (datasets) {
@@ -91,7 +91,7 @@ ya.modules.define('test.cloud.dataSyncApi.cache', [
             var dataset = Dataset.json.deserialize(snapshotJson);
 
             cache.saveDataset('app', 'test', dataset).done(function () {
-                vow.all([
+                Promise.all([
                     cache.getDataset('app', 'test'),
                     cache.getDataset('app', 'test', 'col')
                 ]).done(function (res) {

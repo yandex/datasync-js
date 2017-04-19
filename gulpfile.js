@@ -20,12 +20,12 @@ gulp.task('debug', function () {
             gulp.src(['node_modules/vow/lib/vow.js'])
                 .pipe(wrapper({
                     header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {};\n',
-                    footer: "\nns.vow = module.exports; ns.modules.define('vow', function (provide) { provide(ns.vow); }); })(ns);\n/* eslint-enable */"
+                    footer: "\nns.Promise = module.exports.Promise; ns.modules.define('Promise', function (provide) { provide(ns.Promise); }); })(ns);\n/* eslint-enable */"
                 })
             ),
             gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
                 .pipe(wrapper({
-                    header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                    header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.Promise;\n',
                     footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide) { provide(localForage); }); })(ns);/* eslint-enable */\n"
                 })
             ),
@@ -57,7 +57,7 @@ gulp.task('debug.stripped', function () {
             gulp.src('src/intro-stripped.js'),
             gulp.src(['node_modules/localforage/dist/localforage.nopromises.js'])
                 .pipe(wrapper({
-                        header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.vow.Promise;\n',
+                        header: '/* eslint-disable */(function (ns) {\nvar module = { exports: {} }, exports = {}, Promise = ns.Promise;\n',
                         footer: "\nvar localForage = module.exports;\nns.modules.define('localForage', [], function (provide) { provide(localForage); }); })(ns);\n/* eslint-enable */"
                     })
                 ),

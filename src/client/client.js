@@ -13,76 +13,74 @@ var Client = function () {
  * @param {String} [options.token] OAuth-токен. Если
  * не передан, будет показано окно с диалогом авторизации;
  * в этом случае параметр key обязателен.
- * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+ * @returns {Promise} Объект-Promise, который будет либо подтверждён
  * при успешной аутентификации, либо отклонён в противном случае.
  * @static
  */
 Client.prototype.initialize = function (options) {
-    var deferred = ns.vow.defer();
-
-    ns.modules.require([
-        'cloud.dataSyncApi.config',
-        'component.util',
-        'cloud.Error',
-        'vow',
-        'global'
-    ], (function (config, util, Error, vow, global) {
-        if (!options) {
-            deferred.reject(new Error({
-                message: '`options` Parameter Required'
-            }));
-        } else if (!options.key && !options.token && !options.with_credentials) {
-            deferred.reject(new Error({
-                message: 'Either `options.key` or `options.token` Parameter Required'
-            }));
-        } else {
-            if (options.token) {
-                this._token = options.token;
-                this._initialized = true;
-                deferred.resolve();
-            } else if (options.with_credentials) {
-                this._withCredentials = true;
-                this._initialized = true;
-                deferred.resolve();
+    return new ns.Promise(function(resolve, reject) {
+        ns.modules.require([
+            'cloud.dataSyncApi.config',
+            'component.util',
+            'cloud.Error',
+            'Promise',
+            'global'
+        ], (function (config, util, Error, Promise, global) {
+            if (!options) {
+                reject(new Error({
+                    message: '`options` Parameter Required'
+                }));
+            } else if (!options.key && !options.token && !options.with_credentials) {
+                reject(new Error({
+                    message: 'Either `options.key` or `options.token` Parameter Required'
+                }));
             } else {
-                var oauthWindow = global.open(
-                    config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
-                    'oauth',
-                    config.oauthWindowParameters
-                );
-
-                if (oauthWindow) {
-                    var intervalId = global.setInterval(function () {
-                        if (oauthWindow.closed) {
-                            global.clearInterval(intervalId);
-                            deferred.reject(new Error({
-                                code: 401
-                            }));
-                        } else {
-                            try {
-                                var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
-                                if (match) {
-                                    this._token = match[1];
-                                    this._initialized = true;
-                                    oauthWindow.close();
-                                    global.clearInterval(intervalId);
-                                    deferred.resolve(this._token);
-                                }
-                            } catch (e) {
-                                // do nothing
-                            }
-                        }
-                    }.bind(this), 100);
+                if (options.token) {
+                    this._token = options.token;
+                    this._initialized = true;
+                    resolve();
+                } else if (options.with_credentials) {
+                    this._withCredentials = true;
+                    this._initialized = true;
+                    resolve();
                 } else {
-                    deferred.reject(new Error({
-                        code: 401
-                    }));
+                    var oauthWindow = global.open(
+                        config.oauthLoginPage.replace(/{{\s*key\s*}}/g, options.key),
+                        'oauth',
+                        config.oauthWindowParameters
+                    );
+
+                    if (oauthWindow) {
+                        var intervalId = global.setInterval(function () {
+                            if (oauthWindow.closed) {
+                                global.clearInterval(intervalId);
+                                reject(new Error({
+                                    code: 401
+                                }));
+                            } else {
+                                try {
+                                    var match = oauthWindow.location.hash.match(/access_token=([0-9a-f]+)/);
+                                    if (match) {
+                                        this._token = match[1];
+                                        this._initialized = true;
+                                        oauthWindow.close();
+                                        global.clearInterval(intervalId);
+                                        resolve(this._token);
+                                    }
+                                } catch (e) {
+                                    // do nothing
+                                }
+                            }
+                        }.bind(this), 100);
+                    } else {
+                        reject(new Error({
+                            code: 401
+                        }));
+                    }
                 }
             }
-        }
-    }).bind(this));
-
-    return deferred.promise();
+        }).bind(this));
+    }.bind(this));
 };
 
 /**

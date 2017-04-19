@@ -107,13 +107,13 @@ ya.modules.define('test.cloud.dataSyncApi', ['cloud.dataSyncApi.http'], function
                     }
                 }),
                 clean = function (done) {
-                    ya.vow.all(params.map(http.deleteDatabase)).then(function () { done() }, done);
+                    ya.Promise.all(params.map(http.deleteDatabase)).then(function () { done() }, done);
                 },
                 fail = function (e) {
                     clean(done)
                 };
 
-            ya.vow.all(params.map(ya.cloud.dataSyncApi.createDatabase.bind(ya.cloud.dataSyncApi))).then(function () {
+            ya.Promise.all(params.map(ya.cloud.dataSyncApi.createDatabase.bind(ya.cloud.dataSyncApi))).then(function () {
                 ya.cloud.dataSyncApi.getDatabaseMetadata(params[1]).then(function (res) {
                     expect(res.database_id).to.be(params[1].database_id);
                     ya.cloud.dataSyncApi.listDatabaseMetadata({
