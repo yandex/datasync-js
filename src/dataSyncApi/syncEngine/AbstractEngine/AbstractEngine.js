@@ -1,9 +1,9 @@
 ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
     'global',
-    'vow',
+    'Promise',
     'component.util',
     'cloud.dataSyncApi.http'
-], function (provide, global, vow, util, http) {
+], function (provide, global, Promise, util, http) {
     var AbstractEngine = function (options) {
             this._options = options || {};
             this._databases = {};
@@ -65,7 +65,7 @@ ns.modules.define('cloud.dataSyncApi.syncEngine.AbstractEngine', [
         },
 
         updateRevisions: function () {
-            return vow.all(Object.keys(this._databases).map(function (key) {
+            return Promise.all(Object.keys(this._databases).map(function (key) {
                 var database = this._databases[key].database,
                     callback = util.cancelableCallback(function (response) {
                         if (response.code != 200) {

@@ -2,7 +2,7 @@ var expect = expect || require('expect.js'),
     ya = ya || require('../build/cloud-data-sync-api.js');
 
 ya.modules.define('test.cloud.dataSyncApi.syncEngine', [
-    'vow',
+    'Promise',
     'global',
     'cloud.dataSyncApi.syncEngine.PollEngine',
     'cloud.dataSyncApi.syncEngine.PushEngine',
@@ -10,7 +10,7 @@ ya.modules.define('test.cloud.dataSyncApi.syncEngine', [
     'cloud.dataSyncApi.config',
     'cloud.dataSyncApi.cache',
     'test.util'
-], function (provide, vow, global, PollEngine, PushEngine, http, config, cache, util) {
+], function (provide, Promise, global, PollEngine, PushEngine, http, config, cache, util) {
     var params = util.extractParams(),
         context = params.context || 'app',
         name = params.database_id || 'ya_cloud_api_test',

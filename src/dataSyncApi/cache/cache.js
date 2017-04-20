@@ -1,10 +1,10 @@
 ns.modules.define('cloud.dataSyncApi.cache', [
     'localForage',
-    'vow',
+    'Promise',
     'cloud.Error',
     'cloud.dataSyncApi.config',
     'cloud.dataSyncApi.Dataset'
-], function (provide, localForage, vow, Error, config, Dataset) {
+], function (provide, localForage, Promise, Error, config, Dataset) {
     localForage.config({
         name: config.prefix,
         storeName: config.prefix
@@ -56,7 +56,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
             saveItem: function (key, value) {
                 return localForage.setItem(key, value).fail(function () {
                         return cache.clear().always(function () {
-                            return vow.reject(new Error({
+                            return Promise.reject(new Error({
                                 code: 500
                             }));
                         });
@@ -76,7 +76,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
 
         return localForage.getItem(key).then(function (data) {
             if (!data) {
-                return vow.reject(new Error({
+                return Promise.reject(new Error({
                     code: 404
                 }));
             } else {
@@ -89,7 +89,7 @@ ns.modules.define('cloud.dataSyncApi.cache', [
                     data = null;
                     // Something went wrong, cache is corrupted
                     return cache.clear().always(function () {
-                        return vow.reject(new Error({
+                        return Promise.reject(new Error({
                             code: 500
                         }));
                     });

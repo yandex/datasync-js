@@ -9,12 +9,12 @@ ns.modules.define('cloud.dataSyncApi.Database', [
     'cloud.dataSyncApi.politics',
     'cloud.Error',
     'component.util',
-    'vow'
+    'Promise'
 ], function (provide,
     config, http, client,
     DatasetController, watcher,
     Transaction, Operation, politics,
-    Error, util, vow) {
+    Error, util, Promise) {
 
     var databases = [];
         /**
@@ -140,7 +140,7 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
         /**
          * Синхронизирует БД с удалённым сервером.
-         * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+         * @returns {Promise} Объект-Promise, который будет либо подтверждён
          * новой ревизией БД, либо отклонён с одной из следующих ошибок:
          * <ul>
          *     <li>401 — пользователь не авторизован;</li>
@@ -193,33 +193,33 @@ ns.modules.define('cloud.dataSyncApi.Database', [
 
             if (gone) {
                 return gone;
-            } else {
-                var deferred = vow.defer();
+            }   
 
-                this._pendingCallbacks.push([callback, deferred]);
+            return new Promise(function(resolve, reject) {
+                this._pendingCallbacks.push([callback, resolve, reject]);
                 if (!this._locked) {
                     this._proceedPendingQueue();
                 }
+            }.bind(this));
 
-                return deferred.promise();
-            }
         },
 
         _proceedPendingQueue: function () {
             var parameters = this._pendingCallbacks.shift(),
                 callback = parameters[0],
-                deferred = parameters[1];
+                resolve = parameters[1],
+                reject = parameters[2];
 
             this._locked = true;
 
             callback().then(function (res) {
-                deferred.resolve(res);
+                resolve(res);
                 this._locked = false;
                 if (this._pendingCallbacks.length) {
                     this._proceedPendingQueue();
                 }
             }, function (e) {
-                deferred.reject(e);
+                reject(e);
                 this._locked = false;
                 if (this._pendingCallbacks.length) {
                     this._proceedPendingQueue();
@@ -264,103 +264,97 @@ ns.modules.define('cloud.dataSyncApi.Database', [
         },
 
         _patch: function (parameters, politicsKey) {
-            var deferred = vow.defer(),
-                dataset = this._datasetController.getDataset(),
-                delta_id = parameters.delta_id,
+            return new Promise(function(resolve, reject) {
+                var dataset = this._datasetController.getDataset(),
+                    delta_id = parameters.delta_id,
 
-                success = function () {
-                    deferred.resolve(dataset.getRevision());
-                },
+                    success = function () {
+                        resolve(dataset.getRevision());
+                    },
 
-                fail = (function (e) {
-                    if (e.postDeltaFail) {
-                        this._possiblyMissedDelta = e.postDeltaFail;
-                    }
+                    fail = (function (e) {
+                        if (e.postDeltaFail) {
+                            this._possiblyMissedDelta = e.postDeltaFail;
+                        }
 
-                    deferred.reject(e);
-                }).bind(this);
+                        reject(e);
+                    }).bind(this);
 
-            if (this._missedDelta && delta_id == this._missedDelta) {
-                this._missedDelta = null;
-                success();
-            } else {
-                var preparedOperation = prepareOperation(dataset, parameters, politicsKey),
-                    operations = preparedOperation.operations,
-                    conflicts = preparedOperation.conflicts,
-                    revisionHistory = preparedOperation.revisionHistory,
-                    delta = {
-                        base_revision: this.getRevision(),
-                        delta_id: parameters.delta_id,
-                        changes: operations.map(Operation.json.serialize)
-                    };
-
-                if (conflicts.length) {
-                    fail(new Error({
-                        code: 409,
-                        conflicts: conflicts,
-                        revisionHistory: revisionHistory
-                    }));
+                if (this._missedDelta && delta_id == this._missedDelta) {
+                    this._missedDelta = null;
+                    success();
                 } else {
-                    if (operations.length) {
-                        this._postDeltas({
-                            database_id: this._id,
-                            delta_id: delta_id,
+                    var preparedOperation = prepareOperation(dataset, parameters, politicsKey),
+                        operations = preparedOperation.operations,
+                        conflicts = preparedOperation.conflicts,
+                        revisionHistory = preparedOperation.revisionHistory,
+                        delta = {
                             base_revision: this.getRevision(),
-                            context: this._context,
-                            token: this._token,
-                            data: delta
-                        }).then(
-                            function (revision) {
-                                delta.revision = revision;
-                                dataset.applyDeltas([delta]);
-                                success();
-                                this._notify('update', revision);
-                            },
-                            function (e) {
-                                if (e.code == 409) {
-                                    this._explicitUpdate().then(
-                                        function () {
-                                            this._patch(parameters, politicsKey).then(success, fail);
-                                        },
-                                        fail,
-                                        this
-                                    );
-                                } else {
-                                    fail(e);
-                                }
-                            },
-                            this
-                        );
+                            delta_id: parameters.delta_id,
+                            changes: operations.map(Operation.json.serialize)
+                        };
+
+                    if (conflicts.length) {
+                        fail(new Error({
+                            code: 409,
+                            conflicts: conflicts,
+                            revisionHistory: revisionHistory
+                        }));
                     } else {
-                        success();
+                        if (operations.length) {
+                            this._postDeltas({
+                                database_id: this._id,
+                                delta_id: delta_id,
+                                base_revision: this.getRevision(),
+                                context: this._context,
+                                token: this._token,
+                                data: delta
+                            }).then(
+                                function (revision) {
+                                    delta.revision = revision;
+                                    dataset.applyDeltas([delta]);
+                                    success();
+                                    this._notify('update', revision);
+                                },
+                                function (e) {
+                                    if (e.code == 409) {
+                                        this._explicitUpdate().then(
+                                            function () {
+                                                this._patch(parameters, politicsKey).then(success, fail);
+                                            },
+                                            fail,
+                                            this
+                                        );
+                                    } else {
+                                        fail(e);
+                                    }
+                                },
+                                this
+                            );
+                        } else {
+                            success();
+                        }
                     }
                 }
-            }
-
-            return deferred.promise();
+            }.bind(this));
         },
 
         _postDeltas: function (delta) {
-            var deferred = vow.defer(),
-                fail = function (e) {
-                    deferred.reject(e);
-                };
-
-            http.postDeltas(delta).then(function (res) {
-                if (res.code == 200 || res.code == 201) {
-                    deferred.resolve(Number(res.headers.etag));
-                } else {
-                    if (res.code >= 500) {
-                        res.postDeltaFail = delta.delta_id;
+            return new Promise(function(resolve, reject) {
+                http.postDeltas(delta).then(function (res) {
+                    if (res.code == 200 || res.code == 201) {
+                        resolve(Number(res.headers.etag));
+                    } else {
+                        if (res.code >= 500) {
+                            res.postDeltaFail = delta.delta_id;
+                        }
+                        reject(new Error(res));
                     }
-                    fail(new Error(res));
-                }
-            }, function (e) {
-                e.postDeltaFail = delta.delta_id;
-                fail(e);
-            }, this);
-
-            return deferred.promise();
+                }, function (e) {
+                    e.postDeltaFail = delta.delta_id;
+                    reject(e);
+                }, this);
+            });
         },
 
         /**

@@ -30,7 +30,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {String} [options.collection_id] Фильтр по имени коллекции. При установке
      * этого фильтра база будет содержать только объекты с указанным collection_id, все
      * объекты с отличным от collection_id идентификатором коллекции будут пропускаться.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён экземпляром
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён экземпляром
      * класса {@link cloud.dataSyncApi.Database} при успешном открытии базы данных, либо отклонён
      * с одной из следующих ошибок:
      * <ul>
@@ -167,7 +167,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * числом баз данных, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -203,7 +203,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * метаданными БД, либо отклонён с ошибкой.
      * Метаданные БД представляют собой JSON-объект со следующими полями:
      * <ul>
@@ -254,7 +254,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * массивом метаданных БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -296,7 +296,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * @param {Boolean} [options.ignore_existing = false] true — не генерировать
      * исключение, если база данных с таким идентфикатором уже существует, false —
      * сгенерировать исключение с кодом 409.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * ревизией созданной БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -339,7 +339,7 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
      * функции не авторизован в Диске.
      * @param {String} [options.key] Ключ приложения для авторизации.
      * @param {String} [options.token] Token для авторизации.
-     * @returns {vow.Promise} Объект-Promise, который будет либо подтверждён
+     * @returns {Promise} Объект-Promise, который будет либо подтверждён
      * массивом метаданных созданной БД, либо отклонён с одной из следующих ошибок:
      * <ul>
      *     <li>400 — запрос некорректен;</li>
@@ -364,24 +364,22 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
     /**
      * Закрывает все текущие открытые соединения со всеми
      * базами данных.
-     * @returns {vow.Promise} Объект-promise, который будет
+     * @returns {Promise} Объект-promise, который будет
      * подтверждён по завершении операции.
      */
     closeAllDatabases: function () {
-        return this._require(['cloud.dataSyncApi.Database']).then(function (Database) {
+        return this._require(['cloud.dataSyncApi.Database']).spread(function (Database) {
             Database.closeAll();
             return null;
         });
     },
 
     _require: function (modules) {
-        var deferred = ns.vow.defer();
-
-        ns.modules.require(modules, function () {
-            deferred.resolve([].slice.call(arguments));
+        return new ns.Promise(function(resolve) {
+            ns.modules.require(modules, function () {
+                resolve([].slice.call(arguments));
+            });
         });
-
-        return deferred.promise();
     },
 
     _castMetadata: function (data) {
@@ -402,16 +400,14 @@ ns.cloud.dataSyncApi = /** @lends cloud.dataSyncApi.prototype */ {
             code = 400;
         }
 
-        var deferred = ns.vow.defer();
-
-        ns.modules.require(['cloud.Error'], function (Error) {
-            deferred.reject(new Error({
-                code: code,
-                message: message
-            }));
+        return new ns.Promise(function(resolve, reject) {
+            ns.modules.require(['cloud.Error'], function (Error) {
+                reject(new Error({
+                    code: code,
+                    message: message
+                }));
+            });
         });
-
-        return deferred.promise();
     }
 };
 
