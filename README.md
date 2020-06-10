@@ -9,7 +9,7 @@ Please follow the rules and recommendations in the API Terms of Use and brand gu
 Documentation
 -------------
 
-<a href="https://tech.yandex.ru/datasync/jsapi/">Available at tech.yandex.ru (in Russian)</a>
+<a href="https://yandex.ru/dev/datasync/http/doc">Available at tech.yandex.ru (in Russian)</a>
 
 License
 -------
